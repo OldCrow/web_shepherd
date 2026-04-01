@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Shepherding</title>
+<link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+<canvas id="m-a_s"></canvas>
+
+<script src="config.js"></script>
+<script src="vector-math.js"></script>
+<script src="agent.js"></script>
+<script src="agent_herd.js"></script>
+<script src="agent_shepherd.js"></script>
+<script src="ui.js"></script>
+<script>
+
+// canvas setup
+const canvas  = document.getElementById('m-a_s');
+const ctx     = canvas.getContext('2d');
+
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// initialize agents
+const centerX = canvas.width/2;
+const centerY = canvas.height/2;
+
+const herd = {
+  members: [],
+  color: COLORS.HERD,
+  label: 'Herd'
+};
+herd.members = initializeHerd(INIT.HERD_SIZE, centerX, centerY, INIT.HERD_SPREAD_RADIUS);
+
+const shepherds = {
+  members: [],
+  color: COLORS.SHEPHERD,
+  label: 'Shepherds'
+};
+shepherds.members = initializeShepherds(INIT.SHEPHERD_SIZE, centerX, centerY, canvas.height);
+
+// Track population sizes for UI updates
+let herdSize = INIT.HERD_SIZE;
+let shepherdSize = INIT.SHEPHERD_SIZE;
+
+// wrappers for dynamic UI controls
+function addRandomHerdMember() {
+  _addRandomHerdMember(herd.members, canvas.width, canvas.height);
+}
+function removeRandomHerdMember() {
+  _removeRandomHerdMember(herd.members);
+}
+function addRandomShepherd() {
+  _addRandomShepherd(shepherds.members, canvas.width, canvas.height);
+}
+function removeRandomShepherd() {
+  _removeRandomShepherd(shepherds.members);
+}
+
+// start the app
+initUI(canvas, ctx);
+
+</script>
+</body>
+</html>

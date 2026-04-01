@@ -1,0 +1,131 @@
+<div id="control-panel">
+
+  <!-- CURSOR MODE TOGGLE -->
+  <div class="panel-section">
+    <div class="title-with-toggle">
+      <div class="section-title">Cursor Mode</div>
+      <div class="toggle-switch toggle-switch--compact">
+        <span class="label-inline">Herd</span>
+        <input id="cursor-mode-toggle" type="checkbox">
+        <label for="cursor-mode-toggle" class="toggle-switch-label">
+          <span class="toggle-switch-slider"></span>
+        </label>
+        <span class="label-inline">Shepherd</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- SIZES SECTION -->
+  <div class="panel-section">
+    <div class="collapsible-header" data-toggle="sizes-content">
+      <div class="section-title">Sizes</div>
+      <div class="collapsible-toggle" id="sizes-toggle"></div>
+    </div>
+
+    <div id="sizes-content" class="collapsible-content">
+    <div style="margin-bottom: 10px;">
+      <div class="input-row-flex">
+        <span class="label-uppercase">Herd Size</span>
+        <input id="herd-size-input" type="number" min="3" max="50" value="40" class="number-input">
+      </div>
+    </div>
+
+    <div>
+      <div class="input-row-flex">
+        <span class="label-uppercase">Number of Shepherds</span>
+        <input id="shepherds-count-input" type="number" min="1" max="30" value="40" class="number-input">
+      </div>
+    </div>
+    </div>
+  </div>
+
+  <!-- ======================= -->
+  <!-- HERD PARAMETERS SECTION -->
+  <!-- ======================= -->
+
+  <div class="panel-section">
+    <div class="collapsible-header" data-toggle="herd-content">
+      <div class="section-title">Herd Behavior</div>
+      <div class="collapsible-toggle" id="herd-toggle"></div>
+    </div>
+    
+    <div id="herd-content" class="collapsible-content">
+    <!-- Herd Radii Control - Linear Slider with 3 Buttons -->
+    <div class="multi-slider-group">
+      <div class="multi-slider-track">
+        <div class="multi-slider-track-bg"></div>
+        <span id="multi-label-orientation" class="multi-slider-label" style="left: 33.3%;">ori</span>
+        <span id="multi-label-repulsion" class="multi-slider-label" style="left: 50%;">repr</span>
+        <span id="multi-label-attraction" class="multi-slider-label" style="left: 66.6%;">attr</span>
+        <button id="multi-btn-orientation" class="multi-slider-button" data-behavior="orientation" style="left: 33.3%;"></button>
+        <button id="multi-btn-repulsion" class="multi-slider-button" data-behavior="repulsion" style="left: 50%;"></button>
+        <button id="multi-btn-attraction" class="multi-slider-button" data-behavior="attraction" style="left: 66.6%;"></button>
+        <span id="herd-r-o-value" class="multi-slider-value" style="left: 33.3%;">5.0</span>
+        <span id="herd-r-r-value" class="multi-slider-value" style="left: 50%;">4.5</span>
+        <span id="herd-r-a-value" class="multi-slider-value" style="left: 66.6%;">7.0</span>
+      </div>
+    </div>
+
+    <!-- Laziness -->
+    <div class="section-divider">
+      <div class="slider-row">
+        <span class="slider-label">laziness</span>
+        <input id="herd-a-v" type="range" min="0" max="5" step="0.1" value="3">
+        <span id="herd-a-v-value" class="slider-value">3.0</span>
+      </div>
+    </div>
+    </div>
+  </div>
+
+  <!-- ============================ -->
+  <!-- SHEPHERD PARAMETERS SECTION -->
+  <!-- ============================ -->
+   
+  <div class="panel-section">
+    <div class="collapsible-header" data-toggle="shepherd-content">
+      <div class="section-title">Shepherd Control</div>
+      <div class="collapsible-toggle" id="shepherd-toggle"></div>
+    </div>
+
+    <div id="shepherd-content" class="collapsible-content">
+    <!-- Display shepherding radius value -->
+    <div class="info-box clearfix">
+      <span class="info-box-label">shepherding radius (depends on attraction radius):</span>
+      <span id="shep-r-s-value" class="slider-value info-box-value">8.5</span>
+    </div>
+
+    <!-- Forces Section -->
+    <div style="margin-bottom: 12px;">
+      <div class="slider-group-title" style="margin-bottom: 8px;">forces</div>
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <div class="slider-group">
+          <div class="slider-row">
+            <span class="slider-label">navigation</span>
+            <input id="shep-a-n" type="range" min="0" max="15" step="0.1" value="8">
+            <span id="shep-a-n-value" class="slider-value">8.0</span>
+          </div>
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-row">
+            <span class="slider-label">repulsion</span>
+            <input id="shep-a-r-s" type="range" min="0" max="5" step="0.1" value="2">
+            <span id="shep-a-r-s-value" class="slider-value">2.0</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Laziness -->
+    <div class="slider-group">
+      <div class="slider-group-title">laziness</div>
+      <div class="slider-row">
+        <span style="flex-shrink: 0; font-size: 8px; color: rgba(0,0,0,0.5);"></span>
+        <input id="shep-a-v-s" type="range" min="0" max="5" step="0.1" value="3">
+        <span id="shep-a-v-s-value" class="slider-value">3.0</span>
+      </div>
+    </div>
+    </div>
+  </div>
+
+</div>
