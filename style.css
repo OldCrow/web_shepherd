@@ -1,13 +1,11 @@
 
 :root {
   /* Agent colors */
-  --color-herd: rgba(0, 100, 200, 0.8);
-  --color-herd-light: rgba(0, 100, 200, 0.3);
-  --color-shepherd: rgba(255, 80, 0, 0.9);
-  --color-shepherd-light: rgba(255, 80, 0, 0.3);
-  --color-target: rgba(0, 100, 200, 0.8);
-  --color-centroid-herd: rgba(0, 100, 200, 0.3);
-  --color-centroid-shepherd: rgba(255, 80, 0, 0.3);
+  --color-herd: rgba(150, 150, 150, 0.8);
+  --color-shepherd: rgba(70, 70, 70, 0.9);
+  --color-target: rgba(0, 0, 0, 0.8);
+  --color-centroid-herd: rgba(150, 150, 150, 0.6);
+  --color-centroid-shepherd: rgba(70, 70, 70, 0.7);
   
   /* UI colors */
   --color-accent: rgba(0, 100, 200, 0.6);
@@ -330,7 +328,7 @@ input[type="range"]::-moz-range-thumb {
   display: inline-block;
   width: 32px;
   height: 14px;
-  background: var(--color-accent);
+  background: var(--color-herd);
   border-radius: 7px;
   margin: 0 4px;
   position: relative;

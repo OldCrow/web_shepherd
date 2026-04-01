@@ -417,7 +417,7 @@ function animate() {
     shepCentY += s.y;
   }
   shepCentX /= shepherds.members.length;
-  shepCentY /= shepherds.length;
+  shepCentY /= shepherds.members.length;
 
   ctx.fillStyle = COLORS.CENTROID_SHEPHERD;
   ctx.globalAlpha = 0.3;

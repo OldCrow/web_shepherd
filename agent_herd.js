@@ -117,7 +117,7 @@ class HerdMember extends Agent {
     this.drawRadiusCircle(ctx, color, maxRadiusViz);
     
     const angle = Math.atan2(this.vy, this.vx);
-    this.drawTriangle(ctx, color, 4, angle);
+    this.drawTriangle(ctx, color, 6, angle);
   }
 }
 
