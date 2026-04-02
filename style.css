@@ -27,6 +27,26 @@ canvas {
   display: block;
 }
 
+/* ===== REPO FOOTER ===== */
+#repo-link {
+  position: fixed;
+  bottom: 10px;
+  right: 10px;
+  z-index: 10;
+}
+
+#repo-link a {
+  font-family: monospace;
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.5);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+#repo-link a:hover {
+  color: rgba(0, 0, 0, 0.8);
+}
+
 /* ===== CONTROL PANEL ===== */
 #control-panel {
   position: fixed;
