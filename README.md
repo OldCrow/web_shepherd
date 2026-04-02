@@ -1,4 +1,3 @@
-
 # Web Shepherd
 
 An interactive web app demonstrating shepherding behaviour. 
