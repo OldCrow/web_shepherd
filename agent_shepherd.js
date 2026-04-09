@@ -8,7 +8,6 @@ class Shepherd extends Agent {
     this.vx = 0;
     this.vy = 0;
     this.maxSpeed = PHYSICS.SHEPHERD_MAX_SPEED;
-    this.maxForce = PHYSICS.SHEPHERD_MAX_FORCE;
     this.shepId = shepId;
     this.targetX = x;
     this.targetY = y;
@@ -50,9 +49,8 @@ class Shepherd extends Agent {
         const dist = VectorMath.distance(this.x, this.y, desiredX, desiredY);
 
         if (dist > PHYSICS.SHEPHERD_UPDATE_THRESHOLD) {
-          const navForce = shepParams.a_N * PHYSICS.SHEPHERD_NAV_SCALE;
-          this.vx += (dx / dist) * navForce;
-          this.vy += (dy / dist) * navForce;
+          this.vx += (dx / dist) * shepParams.a_N * PHYSICS.DT;
+          this.vy += (dy / dist) * shepParams.a_N * PHYSICS.DT;
         }
       }
     }
@@ -64,15 +62,14 @@ class Shepherd extends Agent {
       const dy = this.y - other.y;
       const dist = VectorMath.distance(this.x, this.y, other.x, other.y);
       if (dist < PHYSICS.SHEPHERD_REPEL_MAX_DIST && dist > 0) {
-        const repForce = shepParams.a_R_s * PHYSICS.SHEPHERD_REPEL_SCALE;
-        this.vx += (dx / dist) * repForce;
-        this.vy += (dy / dist) * repForce;
+        this.vx += (dx / dist) * shepParams.a_R_s * PHYSICS.DT;
+        this.vy += (dy / dist) * shepParams.a_R_s * PHYSICS.DT;
       }
     }
 
     // laziness/friction: slow down 
-    this.vx += shepParams.a_V_s * (-this.vx) * PHYSICS.SHEPHERD_LAZINESS_SCALE;
-    this.vy += shepParams.a_V_s * (-this.vy) * PHYSICS.SHEPHERD_LAZINESS_SCALE;
+    this.vx += shepParams.a_V_s * (-this.vx) * PHYSICS.DT;
+    this.vy += shepParams.a_V_s * (-this.vy) * PHYSICS.DT;
 
     // limit speed
     const speedLimited = VectorMath.limitMagnitude(this.vx, this.vy, this.maxSpeed);

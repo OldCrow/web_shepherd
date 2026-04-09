@@ -67,19 +67,35 @@
     </div>
     
     <div id="herd-content" class="collapsible-content">
-    <!-- Herd Radii Control - Linear Slider with 3 Buttons -->
-    <div class="multi-slider-group">
-      <div class="multi-slider-track">
-        <div class="multi-slider-track-bg"></div>
-        <span id="multi-label-orientation" class="multi-slider-label" style="left: 33.3%;">ori</span>
-        <span id="multi-label-repulsion" class="multi-slider-label" style="left: 50%;">rep</span>
-        <span id="multi-label-attraction" class="multi-slider-label" style="left: 66.6%;">att</span>
-        <button id="multi-btn-orientation" class="multi-slider-button" data-behavior="orientation" style="left: 33.3%;"></button>
-        <button id="multi-btn-repulsion" class="multi-slider-button" data-behavior="repulsion" style="left: 50%;"></button>
-        <button id="multi-btn-attraction" class="multi-slider-button" data-behavior="attraction" style="left: 66.6%;"></button>
-        <span id="herd-r-o-value" class="multi-slider-value" style="left: 33.3%;">5.0</span>
-        <span id="herd-r-r-value" class="multi-slider-value" style="left: 50%;">4.5</span>
-        <span id="herd-r-a-value" class="multi-slider-value" style="left: 66.6%;">7.0</span>
+    <!-- Herd Force Controls -->
+    <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px;">
+      <div class="slider-group">
+        <div class="slider-row">
+          <span class="slider-label">repulsion</span>
+          <input id="herd-a-r" type="range">
+          <span id="herd-a-r-value" class="slider-value"></span>
+        </div>
+      </div>
+      <div class="slider-group">
+        <div class="slider-row">
+          <span class="slider-label">orientation</span>
+          <input id="herd-a-o" type="range">
+          <span id="herd-a-o-value" class="slider-value"></span>
+        </div>
+      </div>
+      <div class="slider-group">
+        <div class="slider-row">
+          <span class="slider-label">attraction</span>
+          <input id="herd-a-a" type="range">
+          <span id="herd-a-a-value" class="slider-value"></span>
+        </div>
+      </div>
+      <div class="slider-group">
+        <div class="slider-row">
+          <span class="slider-label">interaction</span>
+          <input id="herd-a-i" type="range">
+          <span id="herd-a-i-value" class="slider-value"></span>
+        </div>
       </div>
     </div>
 
@@ -87,8 +103,8 @@
     <div class="section-divider">
       <div class="slider-row">
         <span class="slider-label">drag</span>
-        <input id="herd-a-v" type="range" min="0" max="5" step="0.1" value="3">
-        <span id="herd-a-v-value" class="slider-value">3.0</span>
+        <input id="herd-a-v" type="range">
+        <span id="herd-a-v-value" class="slider-value"></span>
       </div>
     </div>
     </div>
@@ -120,16 +136,16 @@
         <div class="slider-group">
           <div class="slider-row">
             <span class="slider-label">navigation</span>
-            <input id="shep-a-n" type="range" min="0" max="15" step="0.1" value="10">
-            <span id="shep-a-n-value" class="slider-value">10.0</span>
+            <input id="shep-a-n" type="range">
+            <span id="shep-a-n-value" class="slider-value"></span>
           </div>
         </div>
 
         <div class="slider-group">
           <div class="slider-row">
             <span class="slider-label">repulsion</span>
-            <input id="shep-a-r-s" type="range" min="0" max="5" step="0.1" value="2">
-            <span id="shep-a-r-s-value" class="slider-value">2.0</span>
+            <input id="shep-a-r-s" type="range">
+            <span id="shep-a-r-s-value" class="slider-value"></span>
           </div>
         </div>
       </div>

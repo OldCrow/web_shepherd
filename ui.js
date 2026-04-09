@@ -47,22 +47,23 @@ function bindSlider(config) {
 
   if (!slider || !label) return;
 
-  // get constraints 
+  // apply constraints and initial value from config
   const constraints = SLIDER_CONSTRAINTS[config.id];
   if (constraints) {
     slider.setAttribute('min', constraints.min);
     slider.setAttribute('max', constraints.max);
     slider.setAttribute('step', constraints.step);
   }
+  slider.value = config.value;
 
   // set initial label value
-  label.textContent = parseFloat(slider.value).toFixed(1);
+  label.textContent = parseFloat(config.value).toFixed(constraints?.step < 0.1 ? 2 : 1);
 
   // listen to slider changes
   slider.addEventListener('input', e => {
     const val = parseFloat(e.target.value);
     config.setter(val);
-    label.textContent = val.toFixed(1);
+    label.textContent = val.toFixed(constraints?.step < 0.1 ? 2 : 1);
     enforceConstraints();
     updateVisualizations();
   });
@@ -182,17 +183,7 @@ function initShowRadiiToggle() {
 // constrain enforcement 
 function enforceConstraints() {
   
-  // r_R < r_O < r_A (herd repulsion, orientation, attraction)
-  if (herdParams.r_R >= herdParams.r_O) {
-    herdParams.r_O = Math.max(herdParams.r_R + 0.1, herdParams.r_O);
-    document.getElementById('herd-r-o').value = herdParams.r_O;
-    document.getElementById('herd-r-o-value').textContent = herdParams.r_O.toFixed(1);
-  }
-  if (herdParams.r_O >= herdParams.r_A) {
-    herdParams.r_A = Math.max(herdParams.r_O + 0.1, herdParams.r_A);
-    document.getElementById('herd-r-a').value = herdParams.r_A;
-    document.getElementById('herd-r-a-value').textContent = herdParams.r_A.toFixed(1);
-  }
+  // r_R < r_O < r_A constraints hold at fixed defaults (radii are no longer user-adjustable)
   
   // derive interaction radius from attraction radius
   herdParams.r_I = herdParams.r_A - 0.5;

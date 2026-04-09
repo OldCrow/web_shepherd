@@ -8,7 +8,6 @@ class HerdMember extends Agent {
     this.vx = (Math.random() - 0.5) * 1;
     this.vy = (Math.random() - 0.5) * 1;
     this.maxSpeed = PHYSICS.HERD_MAX_SPEED;
-    this.maxForce = PHYSICS.HERD_MAX_FORCE;
     this.herdId = herdId;
   }
 
@@ -58,15 +57,15 @@ class HerdMember extends Agent {
 
     // apply aggregated forces
     if (repCount > 0) {
-      this.vx += repX / repCount * PHYSICS.HERD_FRICTION_SCALE;
-      this.vy += repY / repCount * PHYSICS.HERD_FRICTION_SCALE;
+      this.vx += repX / repCount * PHYSICS.DT;
+      this.vy += repY / repCount * PHYSICS.DT;
     }
 
     if (oriCount > 0) {
       oriX /= oriCount;
       oriY /= oriCount;
-      this.vx += (oriX - this.vx) * herdParams.a_O * 0.01;
-      this.vy += (oriY - this.vy) * herdParams.a_O * 0.01;
+      this.vx += (oriX - this.vx) * herdParams.a_O * PHYSICS.DT;
+      this.vy += (oriY - this.vy) * herdParams.a_O * PHYSICS.DT;
     }
 
     if (attCount > 0) {
@@ -76,8 +75,8 @@ class HerdMember extends Agent {
       const dy = attY - this.y;
       const dist = VectorMath.distance(this.x, this.y, attX, attY);
       if (dist > 0) {
-        this.vx += (dx / dist) * herdParams.a_A * 0.01;
-        this.vy += (dy / dist) * herdParams.a_A * 0.01;
+        this.vx += (dx / dist) * herdParams.a_A * PHYSICS.DT;
+        this.vy += (dy / dist) * herdParams.a_A * PHYSICS.DT;
       }
     }
 
@@ -87,14 +86,14 @@ class HerdMember extends Agent {
       const dy = this.y - shep.y;
       const dist = VectorMath.distance(this.x, this.y, shep.x, shep.y);
       if (dist < herdParams.r_I && dist > 0) {
-        this.vx += (dx / dist) * herdParams.a_I * PHYSICS.HERD_FRICTION_SCALE;
-        this.vy += (dy / dist) * herdParams.a_I * PHYSICS.HERD_FRICTION_SCALE;
+        this.vx += (dx / dist) * herdParams.a_I * PHYSICS.DT;
+        this.vy += (dy / dist) * herdParams.a_I * PHYSICS.DT;
       }
     }
 
     // laziness/friction
-    this.vx *= (1 - herdParams.a_V * PHYSICS.HERD_DAMPING_FACTOR);
-    this.vy *= (1 - herdParams.a_V * PHYSICS.HERD_DAMPING_FACTOR);
+    this.vx *= (1 - herdParams.a_V * PHYSICS.DT);
+    this.vy *= (1 - herdParams.a_V * PHYSICS.DT);
 
     // limit speed
     const speedLimited = VectorMath.limitMagnitude(this.vx, this.vy, this.maxSpeed);
