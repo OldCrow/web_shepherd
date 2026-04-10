@@ -73,16 +73,16 @@ class HerdMember extends Agent {
     // apply aggregated forces 
     // zoning: shepherd overrides all; herd repulsion overrides orientation and attraction
     if (shepCount > 0) {
-      this.vx += (shepRepX / shepCount) * PHYSICS.MAX_FORCE_HERD * herdParams.a_I;
-      this.vy += (shepRepY / shepCount) * PHYSICS.MAX_FORCE_HERD * herdParams.a_I;
+      this.vx += (shepRepX / shepCount) * PHYSICS.HERD_MAX_FORCE * herdParams.a_I;
+      this.vy += (shepRepY / shepCount) * PHYSICS.HERD_MAX_FORCE * herdParams.a_I;
     } else if (repCount > 0) {
-      this.vx += (repX / repCount) * PHYSICS.MAX_FORCE_HERD * herdParams.a_R;
-      this.vy += (repY / repCount) * PHYSICS.MAX_FORCE_HERD * herdParams.a_R;
+      this.vx += (repX / repCount) * PHYSICS.HERD_MAX_FORCE * herdParams.a_R;
+      this.vy += (repY / repCount) * PHYSICS.HERD_MAX_FORCE * herdParams.a_R;
     } else {
       if (oriCount > 0) {
         oriX /= oriCount;
         oriY /= oriCount;
-        const oriForce = VectorMath.limitMagnitude(oriX - this.vx, oriY - this.vy, PHYSICS.MAX_FORCE_HERD * herdParams.a_O);
+        const oriForce = VectorMath.limitMagnitude(oriX - this.vx, oriY - this.vy, PHYSICS.HERD_MAX_FORCE * herdParams.a_O);
         this.vx += oriForce.vx;
         this.vy += oriForce.vy;
       }
@@ -94,8 +94,8 @@ class HerdMember extends Agent {
         const dy = attY - this.y;
         const dist = VectorMath.distance(this.x, this.y, attX, attY);
         if (dist > 0) {
-          this.vx += (dx / dist) * PHYSICS.MAX_FORCE_HERD * herdParams.a_A;
-          this.vy += (dy / dist) * PHYSICS.MAX_FORCE_HERD * herdParams.a_A;
+          this.vx += (dx / dist) * PHYSICS.HERD_MAX_FORCE * herdParams.a_A;
+          this.vy += (dy / dist) * PHYSICS.HERD_MAX_FORCE * herdParams.a_A;
         }
       }
     }

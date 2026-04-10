@@ -49,8 +49,8 @@ class Shepherd extends Agent {
         const dist = VectorMath.distance(this.x, this.y, desiredX, desiredY);
 
         if (dist > PHYSICS.SHEPHERD_UPDATE_THRESHOLD) {
-          this.vx += (dx / dist) * PHYSICS.MAX_FORCE_SHEP * shepParams.a_N;
-          this.vy += (dy / dist) * PHYSICS.MAX_FORCE_SHEP * shepParams.a_N;
+          this.vx += (dx / dist) * PHYSICS.SHEPHERD_MAX_FORCE * shepParams.a_N;
+          this.vy += (dy / dist) * PHYSICS.SHEPHERD_MAX_FORCE * shepParams.a_N;
         }
       }
     }
@@ -62,8 +62,8 @@ class Shepherd extends Agent {
       const dy = this.y - other.y;
       const dist = VectorMath.distance(this.x, this.y, other.x, other.y);
       if (dist < PHYSICS.SHEPHERD_REPEL_MAX_DIST && dist > 0) {
-        this.vx += (dx / dist) * PHYSICS.MAX_FORCE_SHEP * shepParams.a_R_s;
-        this.vy += (dy / dist) * PHYSICS.MAX_FORCE_SHEP * shepParams.a_R_s;
+        this.vx += (dx / dist) * PHYSICS.SHEPHERD_MAX_FORCE * shepParams.a_R_s;
+        this.vy += (dy / dist) * PHYSICS.SHEPHERD_MAX_FORCE * shepParams.a_R_s;
       }
     }
 

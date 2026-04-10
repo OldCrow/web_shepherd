@@ -3,12 +3,12 @@
 
 // physics 
 const PHYSICS = {
-  MAX_FORCE_SHEP: 0.10,   // max shepherd force per frame 
-  SHEPHERD_MAX_SPEED: 5.0,
+  SHEPHERD_MAX_FORCE: 0.2,   // max shepherd force per frame 
+  SHEPHERD_MAX_SPEED: 2.0,
   SHEPHERD_REPEL_MAX_DIST: 50,
   SHEPHERD_UPDATE_THRESHOLD: 0.5,
-  MAX_FORCE_HERD: 0.1,         // max herd force per frame 
-  HERD_MAX_SPEED: 2.0,
+  HERD_MAX_FORCE: 0.1,         // max herd force per frame 
+  HERD_MAX_SPEED: 1.0,
   DT: 0.02,
   VISUALIZATION_SCALE: 1,
   CURSOR_VELOCITY_SMOOTH: 0.2  // lower = smoother but more lag, higher = more responsive
@@ -16,8 +16,8 @@ const PHYSICS = {
 
 // initialization of agents 
 const INIT = {
-  HERD_SIZE: 40,
-  SHEPHERD_SIZE: 40,
+  HERD_SIZE: 20,
+  SHEPHERD_SIZE: 5,
   HERD_SPREAD_RADIUS: 300
 };
 
@@ -32,20 +32,20 @@ let herdParams = {
   r_O: 30.0, // 30.0,       // orientation radius
   r_A: 50.0, //50.0,       // attraction radius 
   a_R: 0.9,                 // repulsion gain      [0,1]
-  a_O: 1.0,                 // orientation gain    [0,1]
-  a_A: 0.9,                 // attraction gain     [0,1]
-  a_I: 0.625,               // interaction gain (shepherd avoidance) [0,1]
-  a_V: 2.0                 // drag gain
+  a_O: 0.3,                 // orientation gain    [0,1]
+  a_A: 0.6,                 // attraction gain     [0,1]
+  a_I: 1.0,               // interaction gain (shepherd avoidance) [0,1]
+  a_V: 1.0                 // drag gain
 };
 herdParams.r_I = herdParams.r_A - 0.5;  // interaction radius (derived: r_A - 0.5)
 
 // shepherd behavior parameters 
 let shepParams = {
   r_S: (herdParams.r_A - 0.5) - 1,  // desired shepherding radius (derived: (r_A - 0.5) - 1)
-  a_N: 1.0,                          // navigation gain             [0,1]
-  a_R_s: 1.0,                        // shepherd repulsion gain     [0,1]
-  a_R_s_v: 2 * Math.sqrt(1.0),       // shepherd velocity repulsion (derived: 2*sqrt(a_R_s))
-  a_V_s: 0.3                         // shepherd drag gain
+  a_N: 0.9,                          // navigation gain             [0,1]
+  a_R_s: 0.9,                        // shepherd repulsion gain     [0,1]
+  a_R_s_v: 2 * Math.sqrt(0.9),       // shepherd velocity repulsion (derived: 2*sqrt(a_R_s))
+  a_V_s: 0.6                         // shepherd drag gain
 };
 
 // min/max values for UI sliders (fixed)
