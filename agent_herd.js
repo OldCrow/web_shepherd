@@ -12,7 +12,8 @@ class HerdMember extends Agent {
   }
 
   // update the herd dynamics 
-  update(allMembers, shepherds, width, height) {
+  // grid: optional SpatialGrid for O(1) neighbor lookup
+  update(allMembers, shepherds, width, height, grid) {
     
     // compute r_I from r_A if not already set
     if (herdParams.r_I === null) {
@@ -25,48 +26,64 @@ class HerdMember extends Agent {
     let attX = 0, attY = 0;
     let repCount = 0, oriCount = 0, attCount = 0;
 
-    // interact with other herd members 
-    for (let other of allMembers) {
+    // pre-compute squared radii to avoid sqrt in range comparisons
+    const r_R_sq = herdParams.r_R * herdParams.r_R;
+    const r_O_sq = herdParams.r_O * herdParams.r_O;
+    const r_A_sq = herdParams.r_A * herdParams.r_A;
+
+    // interact with nearby herd members (use spatial grid if available)
+    const nearby = grid ? grid.query(this.x, this.y, Math.max(herdParams.r_R, herdParams.r_O, herdParams.r_A)) : allMembers;
+    for (let other of nearby) {
       if (other === this) continue;
 
       const dx = this.x - other.x;
       const dy = this.y - other.y;
-      const dist = VectorMath.distance(this.x, this.y, other.x, other.y);
+      const distSq = dx * dx + dy * dy;
 
-      // repulsion (r_R) — inverse-square weighted (i.e., closer neighbors dominate)
-      if (dist < herdParams.r_R && dist > 0) {
-        const w = 1 / (dist * dist);
-        repX += (dx / dist) * w;
-        repY += (dy / dist) * w;
-        repCount += w;
+      if (distSq === 0) continue;
+
+      // repulsion (r_R) — inverse-square weighted
+      if (distSq < r_R_sq) {
+        // w = 1/distSq, and (dx/dist)*w = dx/dist^3 = dx/(distSq * sqrt(distSq))
+        // but since we accumulate weighted, we can use: dx / (distSq) as the contribution
+        // which is (dx/dist) * (1/dist) = equivalent to original (dx/dist) * (1/distSq) * dist
+        // Actually: original is (dx/dist) * (1/distSq) = dx / (dist^3)
+        // = dx / (distSq * sqrt(distSq))
+        const invDistSq = 1 / distSq;
+        const invDist = Math.sqrt(invDistSq); // = 1/dist, only sqrt when actually needed
+        repX += dx * invDist * invDistSq;
+        repY += dy * invDist * invDistSq;
+        repCount += invDistSq;
       }
 
-      // orientation (r_O)
-      if (dist < herdParams.r_O && dist > 0) {
+      // orientation (r_O) — no distance value needed, just range check
+      if (distSq < r_O_sq) {
         oriX += other.vx;
         oriY += other.vy;
         oriCount++;
       }
 
-      // attraction (r_A)
-      if (dist < herdParams.r_A && dist > 0) {
+      // attraction (r_A) — no distance value needed, just range check
+      if (distSq < r_A_sq) {
         attX += other.x;
         attY += other.y;
         attCount++;
       }
     }
 
-    // check shepherd interaction first (highest priority — overrides herd mentality)
+    // check shepherd interaction (highest priority — overrides herd mentality)
+    const r_I_sq = herdParams.r_I * herdParams.r_I;
     let shepRepX = 0, shepRepY = 0, shepCount = 0;
     for (let shep of shepherds) {
       const dx = this.x - shep.x;
       const dy = this.y - shep.y;
-      const dist = VectorMath.distance(this.x, this.y, shep.x, shep.y);
-      if (dist < herdParams.r_I && dist > 0) {
-        const w = 1 / (dist * dist);
-        shepRepX += (dx / dist) * w;
-        shepRepY += (dy / dist) * w;
-        shepCount += w;
+      const distSq = dx * dx + dy * dy;
+      if (distSq < r_I_sq && distSq > 0) {
+        const invDistSq = 1 / distSq;
+        const invDist = Math.sqrt(invDistSq);
+        shepRepX += dx * invDist * invDistSq;
+        shepRepY += dy * invDist * invDistSq;
+        shepCount += invDistSq;
       }
     }
 
@@ -82,9 +99,9 @@ class HerdMember extends Agent {
       if (oriCount > 0) {
         oriX /= oriCount;
         oriY /= oriCount;
-        const oriForce = VectorMath.limitMagnitude(oriX - this.vx, oriY - this.vy, PHYSICS.HERD_MAX_FORCE * herdParams.a_O);
-        this.vx += oriForce.vx;
-        this.vy += oriForce.vy;
+        VectorMath.limitMagnitudeInto(oriX - this.vx, oriY - this.vy, PHYSICS.HERD_MAX_FORCE * herdParams.a_O, VectorMath._limitOut);
+        this.vx += VectorMath._limitOut.vx;
+        this.vy += VectorMath._limitOut.vy;
       }
 
       if (attCount > 0) {
@@ -92,10 +109,11 @@ class HerdMember extends Agent {
         attY /= attCount;
         const dx = attX - this.x;
         const dy = attY - this.y;
-        const dist = VectorMath.distance(this.x, this.y, attX, attY);
-        if (dist > 0) {
-          this.vx += (dx / dist) * PHYSICS.HERD_MAX_FORCE * herdParams.a_A;
-          this.vy += (dy / dist) * PHYSICS.HERD_MAX_FORCE * herdParams.a_A;
+        const distSqAtt = dx * dx + dy * dy;
+        if (distSqAtt > 0) {
+          const invDist = 1 / Math.sqrt(distSqAtt);
+          this.vx += dx * invDist * PHYSICS.HERD_MAX_FORCE * herdParams.a_A;
+          this.vy += dy * invDist * PHYSICS.HERD_MAX_FORCE * herdParams.a_A;
         }
       }
     }
@@ -104,10 +122,10 @@ class HerdMember extends Agent {
     this.vx *= (1 - herdParams.a_V * PHYSICS.DT);
     this.vy *= (1 - herdParams.a_V * PHYSICS.DT);
 
-    // limit speed
-    const speedLimited = VectorMath.limitMagnitude(this.vx, this.vy, this.maxSpeed);
-    this.vx = speedLimited.vx;
-    this.vy = speedLimited.vy;
+    // limit speed (GC-free)
+    VectorMath.limitMagnitudeInto(this.vx, this.vy, this.maxSpeed, VectorMath._limitOut);
+    this.vx = VectorMath._limitOut.vx;
+    this.vy = VectorMath._limitOut.vy;
 
     // update position (should have a time component, but scaling does this)
     this.x += this.vx;

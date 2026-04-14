@@ -335,18 +335,37 @@ function initMultiSlider() {
 }
 
 
-let precomputedOtherShepherds = [];
+// precomputeOtherShepherds removed — shepherds now filter with === this
+// check inline, avoiding per-frame array allocation.
 
-function precomputeOtherShepherds() {
-  const shepsObjects = shepherds.members;
-  precomputedOtherShepherds = [];
-  for (let s = 0; s < shepherds.members.length; s++) {
-    const otherSheps = [];
-    for (let i = 0; i < shepsObjects.length; i++) {
-      if (i !== s) otherSheps.push(shepsObjects[i]);
-    }
-    precomputedOtherShepherds[s] = otherSheps;
+// spatial grid — rebuilt each frame, shared across all agents
+const spatialGrid = new SpatialGrid(Math.max(50, herdParams.r_A));
+
+// FPS counter
+let fpsFrameCount = 0;
+let fpsLastTime = performance.now();
+let fpsDisplay = 0;
+
+function updateFPS() {
+  fpsFrameCount++;
+  const now = performance.now();
+  if (now - fpsLastTime >= 1000) {
+    fpsDisplay = fpsFrameCount;
+    fpsFrameCount = 0;
+    fpsLastTime = now;
   }
+}
+
+function drawFPS(ctx) {
+  const n = herd.members.length + shepherds.members.length;
+  const text = `${fpsDisplay} fps | ${n} agents`;
+  ctx.font = '12px monospace';
+  // dark background for readability on any canvas color
+  const metrics = ctx.measureText(text);
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(6, 6, metrics.width + 8, 18);
+  ctx.fillStyle = '#fff';
+  ctx.fillText(text, 10, 20);
 }
 
 // animation 
@@ -392,9 +411,17 @@ function animate() {
   const shepsTargetY = targetY;
 
   // update and draw herd (include cursor herd member if in herd mode)
-  const allMembers = cursorControlsFirstShepherd ? herd.members : [...herd.members, cursorHerdMember];
-  const cursorShepherdList = cursorControlsFirstShepherd ? [] : [cursorShepherd];
+  const allMembers = herd.members;
+  const includeCursorHerd = !cursorControlsFirstShepherd;
   const shepsObjects = shepherds.members;
+
+  // rebuild spatial grid with all agents — O(n) per frame
+  spatialGrid.cellSize = Math.max(50, herdParams.r_A, PHYSICS.SHEPHERD_REPEL_MAX_DIST);
+  spatialGrid.invCellSize = 1 / spatialGrid.cellSize;
+  spatialGrid.clear();
+  for (let member of allMembers) spatialGrid.insert(member);
+  if (includeCursorHerd) spatialGrid.insert(cursorHerdMember);
+  for (let shep of shepsObjects) spatialGrid.insert(shep);
 
   // compute herd centroid (cached for this frame)
   let centX = 0, centY = 0;
@@ -402,13 +429,22 @@ function animate() {
     centX += member.x;
     centY += member.y;
   }
-  centX /= allMembers.length;
-  centY /= allMembers.length;
+  if (includeCursorHerd) {
+    centX += cursorHerdMember.x;
+    centY += cursorHerdMember.y;
+  }
+  const centCount = allMembers.length + (includeCursorHerd ? 1 : 0);
+  centX /= centCount;
+  centY /= centCount;
 
-  // update each herd member
+  // update each herd member (pass spatial grid for O(1) neighbor lookup)
   for (let member of allMembers) {
-    member.update(allMembers, shepsObjects, canvas.width, canvas.height);
+    member.update(allMembers, shepsObjects, canvas.width, canvas.height, spatialGrid);
     member.draw(ctx, herd.color);
+  }
+  if (includeCursorHerd) {
+    cursorHerdMember.update(allMembers, shepsObjects, canvas.width, canvas.height, spatialGrid);
+    cursorHerdMember.draw(ctx, herd.color);
   }
 
   // draw herd centroid
@@ -419,13 +455,10 @@ function animate() {
   ctx.fill();
   ctx.globalAlpha = 1.0;
 
-  // update and draw shepherds (pre-compute other shepherds lists)
-  precomputeOtherShepherds();
-  for (let s = 0; s < shepherds.members.length; s++) {
-    const shep = shepherds.members[s];
-    const otherSheps = precomputedOtherShepherds[s].concat(cursorShepherdList);
-
-    shep.update(allMembers, otherSheps, shepsTargetX, shepsTargetY, canvas.width, canvas.height);
+  // update and draw shepherds (pass full list, each shepherd skips self)
+  for (let s = 0; s < shepsObjects.length; s++) {
+    const shep = shepsObjects[s];
+    shep.update(allMembers, shepsObjects, shepsTargetX, shepsTargetY, canvas.width, canvas.height, spatialGrid);
     shep.draw(ctx, shepherds.color);
   }
 
@@ -476,6 +509,10 @@ function animate() {
   ctx.beginPath();
   ctx.arc(targetX, targetY, 2, 0, Math.PI * 2);
   ctx.fill();
+
+  // FPS overlay
+  updateFPS();
+  drawFPS(ctx);
 
   requestAnimationFrame(animate);
 }

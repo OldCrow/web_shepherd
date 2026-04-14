@@ -1,0 +1,16 @@
+# Editor and IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local Warp context
+WARP.md
+
+# Node (if added later)
+node_modules/

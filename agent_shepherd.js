@@ -13,16 +13,21 @@ class Shepherd extends Agent {
     this.targetY = y;
   }
 
-  // update the shepherd dynamics 
-  update(herdMembers, otherShepherds, targetX, targetY, width, height) {
+  // update the shepherd dynamics
+  // grid: optional SpatialGrid for O(1) neighbor lookup
+  update(herdMembers, otherShepherds, targetX, targetY, width, height, grid) {
 
-    // find closest herd member
+    // find closest herd member — must search ALL members (not grid)
+    // because the shepherd navigates to wherever the closest herd member is,
+    // regardless of distance. Grid would miss wrapped-around agents.
     let closestHerd = null;
-    let minDist = Infinity;
+    let minDistSq = Infinity;
     for (let member of herdMembers) {
-      const dist = VectorMath.distance(this.x, this.y, member.x, member.y);
-      if (dist < minDist) {
-        minDist = dist;
+      const dx = member.x - this.x;
+      const dy = member.y - this.y;
+      const distSq = dx * dx + dy * dy;
+      if (distSq < minDistSq) {
+        minDistSq = distSq;
         closestHerd = member;
       }
     }
@@ -55,15 +60,19 @@ class Shepherd extends Agent {
       }
     }
 
-    // repulsion from other shepherds
-    for (let other of otherShepherds) {
+    // repulsion from other shepherds (use grid for nearby query)
+    const repelMaxDistSq = PHYSICS.SHEPHERD_REPEL_MAX_DIST * PHYSICS.SHEPHERD_REPEL_MAX_DIST;
+    const nearbyShepherds = grid ? grid.query(this.x, this.y, PHYSICS.SHEPHERD_REPEL_MAX_DIST) : otherShepherds;
+    for (let other of nearbyShepherds) {
       if (other === this) continue;
+      if (!(other instanceof Shepherd)) continue; // grid returns all agent types
       const dx = this.x - other.x;
       const dy = this.y - other.y;
-      const dist = VectorMath.distance(this.x, this.y, other.x, other.y);
-      if (dist < PHYSICS.SHEPHERD_REPEL_MAX_DIST && dist > 0) {
-        this.vx += (dx / dist) * PHYSICS.SHEPHERD_MAX_FORCE * shepParams.a_R_s;
-        this.vy += (dy / dist) * PHYSICS.SHEPHERD_MAX_FORCE * shepParams.a_R_s;
+      const distSq = dx * dx + dy * dy;
+      if (distSq < repelMaxDistSq && distSq > 0) {
+        const invDist = 1 / Math.sqrt(distSq);
+        this.vx += dx * invDist * PHYSICS.SHEPHERD_MAX_FORCE * shepParams.a_R_s;
+        this.vy += dy * invDist * PHYSICS.SHEPHERD_MAX_FORCE * shepParams.a_R_s;
       }
     }
 
@@ -71,10 +80,10 @@ class Shepherd extends Agent {
     this.vx += shepParams.a_V_s * (-this.vx) * PHYSICS.DT;
     this.vy += shepParams.a_V_s * (-this.vy) * PHYSICS.DT;
 
-    // limit speed
-    const speedLimited = VectorMath.limitMagnitude(this.vx, this.vy, this.maxSpeed);
-    this.vx = speedLimited.vx;
-    this.vy = speedLimited.vy;
+    // limit speed (GC-free)
+    VectorMath.limitMagnitudeInto(this.vx, this.vy, this.maxSpeed, VectorMath._limitOut);
+    this.vx = VectorMath._limitOut.vx;
+    this.vy = VectorMath._limitOut.vy;
 
     // update position (should have a time component, but scaling does this)
     this.x += this.vx;
