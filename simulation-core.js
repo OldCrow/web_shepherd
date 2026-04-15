@@ -47,26 +47,59 @@ function rebuildSimulationGrid(allMembers, shepherdMembers) {
   for (let shep of shepherdMembers) simulationGrid.insert(shep);
 }
 
-function computeCentroid(members) {
-  let sumX = 0;
-  let sumY = 0;
-  const count = members.length;
+function _computeCircularCoordinate(values, period) {
+  if (values.length === 0 || period <= 0) return 0;
 
-  for (let i = 0; i < count; i++) {
-    sumX += members[i].x;
-    sumY += members[i].y;
+  // Circular mean on [0, period): map to angle, average unit vectors, map back.
+  // This keeps means stable when values straddle wrap boundaries.
+  let sumSin = 0;
+  let sumCos = 0;
+  const factor = (2 * Math.PI) / period;
+
+  for (let i = 0; i < values.length; i++) {
+    const angle = values[i] * factor;
+    sumSin += Math.sin(angle);
+    sumCos += Math.cos(angle);
   }
 
-  if (count === 0) {
+  const magnitudeSq = sumSin * sumSin + sumCos * sumCos;
+  if (magnitudeSq < 1e-12) {
+    // Ambiguous circular mean (uniform/opposed spread): fall back to arithmetic.
+    let sum = 0;
+    for (let i = 0; i < values.length; i++) sum += values[i];
+    return sum / values.length;
+  }
+
+  let angle = Math.atan2(sumSin, sumCos);
+  if (angle < 0) angle += 2 * Math.PI;
+  return (angle / (2 * Math.PI)) * period;
+}
+
+function computeToroidalCentroid(members, width, height, extraMember = null) {
+  const xs = [];
+  const ys = [];
+
+  for (let i = 0; i < members.length; i++) {
+    xs.push(members[i].x);
+    ys.push(members[i].y);
+  }
+
+  if (extraMember) {
+    xs.push(extraMember.x);
+    ys.push(extraMember.y);
+  }
+
+  if (xs.length === 0) {
     return { x: 0, y: 0, count: 0 };
   }
 
   return {
-    x: sumX / count,
-    y: sumY / count,
-    count
+    x: _computeCircularCoordinate(xs, width),
+    y: _computeCircularCoordinate(ys, height),
+    count: xs.length
   };
 }
+
 
 function stepSimulation(simState) {
   updateCursorState(simState);
@@ -96,8 +129,18 @@ function stepSimulation(simState) {
     );
   }
 
-  const herdCentroid = computeCentroid(allMembers);
-  const shepherdCentroid = computeCentroid(shepsObjects);
+  // allMembers already includes the cursor herd member when in herd mode,
+  // so no extraMember is passed here.
+  const herdCentroid = computeToroidalCentroid(
+    allMembers,
+    simState.canvasWidth,
+    simState.canvasHeight
+  );
+  const shepherdCentroid = computeToroidalCentroid(
+    shepsObjects,
+    simState.canvasWidth,
+    simState.canvasHeight
+  );
 
   // Note: only plain data here — this object crosses the worker
   // postMessage boundary, so live agent objects must not be included.
