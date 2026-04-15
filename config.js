@@ -70,8 +70,11 @@ const PHYSICS = {
   HERD_MAX_FORCE: modeConfig.HERD_MAX_FORCE,
   HERD_MAX_SPEED: modeConfig.HERD_MAX_SPEED,
   DT: modeConfig.DT,
-  FIXED_TIMESTEP_MS: 1000 / 60,
-  MAX_CATCHUP_STEPS: 5,
+  // Run simulation at 120Hz to better match the pre-refactor traversal speed
+  // seen on high-refresh displays (previously tied to requestAnimationFrame).
+  FIXED_TIMESTEP_MS: 1000 / 120,
+  // Keep catch-up horizon close to the prior ~83ms (5 steps @ 60Hz).
+  MAX_CATCHUP_STEPS: 10,
   MAX_FRAME_DELTA_MS: 100,
   VISUALIZATION_SCALE: modeConfig.VISUALIZATION_SCALE,
   CURSOR_VELOCITY_SMOOTH: modeConfig.CURSOR_VELOCITY_SMOOTH,
