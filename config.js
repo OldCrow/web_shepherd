@@ -10,6 +10,9 @@ const PHYSICS = {
   HERD_MAX_FORCE: 0.1,         // max herd force per frame 
   HERD_MAX_SPEED: 1.0,
   DT: 0.02,
+  FIXED_TIMESTEP_MS: 1000 / 60,
+  MAX_CATCHUP_STEPS: 5,
+  MAX_FRAME_DELTA_MS: 100,
   VISUALIZATION_SCALE: 1,
   CURSOR_VELOCITY_SMOOTH: 0.2  // lower = smoother but more lag, higher = more responsive
 };

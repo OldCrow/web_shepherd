@@ -338,8 +338,6 @@ function initMultiSlider() {
 // precomputeOtherShepherds removed — shepherds now filter with === this
 // check inline, avoiding per-frame array allocation.
 
-// spatial grid — rebuilt each frame, shared across all agents
-const spatialGrid = new SpatialGrid(Math.max(50, herdParams.r_A));
 
 // FPS counter
 let fpsFrameCount = 0;
@@ -367,150 +365,79 @@ function drawFPS(ctx) {
   ctx.fillStyle = '#fff';
   ctx.fillText(text, 10, 20);
 }
+const fixedStepLoop = {
+  stepMs: PHYSICS.FIXED_TIMESTEP_MS,
+  maxCatchupSteps: PHYSICS.MAX_CATCHUP_STEPS,
+  maxFrameDeltaMs: PHYSICS.MAX_FRAME_DELTA_MS,
+  accumulatorMs: 0,
+  lastFrameTime: null,
+  lastSimulationFrame: null
+};
 
 // animation 
 let animationContext = null;
 
 function setAnimationContext(ctx) {
   animationContext = ctx;
+  fixedStepLoop.accumulatorMs = 0;
+  fixedStepLoop.lastFrameTime = null;
+  fixedStepLoop.lastSimulationFrame = null;
 }
 
-function animate() {
-  const canvas = animationContext.canvas;
+function buildSimulationState(canvas) {
+  return {
+    canvasWidth: canvas.width,
+    canvasHeight: canvas.height,
+    herdMembers: herd.members,
+    shepherdMembers: shepherds.members,
+    herdColor: herd.color,
+    shepherdColor: shepherds.color,
+    cursorHerdMember,
+    cursorShepherd,
+    cursorControlsFirstShepherd,
+    mouseX,
+    mouseY,
+    prevMouseX,
+    prevMouseY,
+    targetX,
+    targetY
+  };
+}
+
+function animate(timestamp) {
   const ctx = animationContext;
-  
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const canvas = ctx.canvas;
 
-  // update cursor position based on mode
-  const rawVx = mouseX - prevMouseX;
-  const rawVy = mouseY - prevMouseY;
-  const alpha = PHYSICS.CURSOR_VELOCITY_SMOOTH;
-  
-  if (cursorControlsFirstShepherd) {
-    shepherds.members[0].x = mouseX;
-    shepherds.members[0].y = mouseY;
-    // smooth velocity to reduce jitter
-    shepherds.members[0].vx = shepherds.members[0].vx * (1 - alpha) + rawVx * alpha;
-    shepherds.members[0].vy = shepherds.members[0].vy * (1 - alpha) + rawVy * alpha;
-    
-    // also update cursor shepherd object for radius visualization
-    cursorShepherd.x = mouseX;
-    cursorShepherd.y = mouseY;
-    cursorShepherd.vx = shepherds.members[0].vx;
-    cursorShepherd.vy = shepherds.members[0].vy;
-  } else {
-    cursorHerdMember.x = mouseX;
-    cursorHerdMember.y = mouseY;
-    // smooth velocity to reduce jitter
-    cursorHerdMember.vx = cursorHerdMember.vx * (1 - alpha) + rawVx * alpha;
-    cursorHerdMember.vy = cursorHerdMember.vy * (1 - alpha) + rawVy * alpha;
+  if (fixedStepLoop.lastFrameTime === null) {
+    fixedStepLoop.lastFrameTime = timestamp;
   }
 
-  // all shepherds navigate to the center target
-  const shepsTargetX = targetX;
-  const shepsTargetY = targetY;
+  const frameDelta = Math.min(
+    fixedStepLoop.maxFrameDeltaMs,
+    timestamp - fixedStepLoop.lastFrameTime
+  );
+  fixedStepLoop.lastFrameTime = timestamp;
+  fixedStepLoop.accumulatorMs += frameDelta;
 
-  // update and draw herd (include cursor herd member if in herd mode)
-  const allMembers = herd.members;
-  const includeCursorHerd = !cursorControlsFirstShepherd;
-  const shepsObjects = shepherds.members;
-
-  // rebuild spatial grid with all agents — O(n) per frame
-  spatialGrid.cellSize = Math.max(50, herdParams.r_A, PHYSICS.SHEPHERD_REPEL_MAX_DIST);
-  spatialGrid.invCellSize = 1 / spatialGrid.cellSize;
-  spatialGrid.clear();
-  for (let member of allMembers) spatialGrid.insert(member);
-  if (includeCursorHerd) spatialGrid.insert(cursorHerdMember);
-  for (let shep of shepsObjects) spatialGrid.insert(shep);
-
-  // compute herd centroid (cached for this frame)
-  let centX = 0, centY = 0;
-  for (let member of allMembers) {
-    centX += member.x;
-    centY += member.y;
-  }
-  if (includeCursorHerd) {
-    centX += cursorHerdMember.x;
-    centY += cursorHerdMember.y;
-  }
-  const centCount = allMembers.length + (includeCursorHerd ? 1 : 0);
-  centX /= centCount;
-  centY /= centCount;
-
-  // update each herd member (pass spatial grid for O(1) neighbor lookup)
-  for (let member of allMembers) {
-    member.update(allMembers, shepsObjects, canvas.width, canvas.height, spatialGrid);
-    member.draw(ctx, herd.color);
-  }
-  if (includeCursorHerd) {
-    cursorHerdMember.update(allMembers, shepsObjects, canvas.width, canvas.height, spatialGrid);
-    cursorHerdMember.draw(ctx, herd.color);
+  const simState = buildSimulationState(canvas);
+  let steps = 0;
+  while (
+    fixedStepLoop.accumulatorMs >= fixedStepLoop.stepMs &&
+    steps < fixedStepLoop.maxCatchupSteps
+  ) {
+    fixedStepLoop.lastSimulationFrame = stepSimulation(simState);
+    fixedStepLoop.accumulatorMs -= fixedStepLoop.stepMs;
+    steps++;
   }
 
-  // draw herd centroid
-  ctx.fillStyle = COLORS.CENTROID_HERD;
-  ctx.globalAlpha = 0.3;
-  ctx.beginPath();
-  ctx.arc(centX, centY, 8, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.globalAlpha = 1.0;
-
-  // update and draw shepherds (pass full list, each shepherd skips self)
-  for (let s = 0; s < shepsObjects.length; s++) {
-    const shep = shepsObjects[s];
-    shep.update(allMembers, shepsObjects, shepsTargetX, shepsTargetY, canvas.width, canvas.height, spatialGrid);
-    shep.draw(ctx, shepherds.color);
+  // Ensure first frame has a valid simulation snapshot.
+  if (!fixedStepLoop.lastSimulationFrame) {
+    fixedStepLoop.lastSimulationFrame = stepSimulation(simState);
+    fixedStepLoop.accumulatorMs = 0;
   }
 
-  // draw cursor shepherd if in shepherd mode
-  if (cursorControlsFirstShepherd) {
-    cursorShepherd.draw(ctx, shepherds.color);
-  }
+  renderSimulationFrame(ctx, simState, fixedStepLoop.lastSimulationFrame);
 
-  // compute shepherds centroid (cached for this frame)
-  let shepCentX = 0, shepCentY = 0;
-  for (let s of shepherds.members) {
-    shepCentX += s.x;
-    shepCentY += s.y;
-  }
-  shepCentX /= shepherds.members.length;
-  shepCentY /= shepherds.members.length;
-
-  ctx.fillStyle = COLORS.CENTROID_SHEPHERD;
-  ctx.globalAlpha = 0.3;
-  ctx.beginPath();
-  ctx.arc(shepCentX, shepCentY, 8, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.globalAlpha = 1.0;
-
-  // draw target at current position
-  // outer circle
-  ctx.strokeStyle = COLORS.TARGET;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.arc(targetX, targetY, 8, 0, Math.PI * 2);
-  ctx.stroke();
-  
-  // inner circle
-  ctx.beginPath();
-  ctx.arc(targetX, targetY, 4, 0, Math.PI * 2);
-  ctx.stroke();
-  
-  // crosshair
-  ctx.beginPath();
-  ctx.moveTo(targetX - 6, targetY);
-  ctx.lineTo(targetX + 6, targetY);
-  ctx.moveTo(targetX, targetY - 6);
-  ctx.lineTo(targetX, targetY + 6);
-  ctx.stroke();
-  
-  // center dot
-  ctx.fillStyle = COLORS.TARGET;
-  ctx.beginPath();
-  ctx.arc(targetX, targetY, 2, 0, Math.PI * 2);
-  ctx.fill();
-
-  // FPS overlay
   updateFPS();
   drawFPS(ctx);
 
@@ -548,5 +475,5 @@ function initUI(canvas, ctx) {
   // set up animation context and start loop
   setAnimationContext(ctx);
   enforceConstraints();
-  animate();
+  requestAnimationFrame(animate);
 }
