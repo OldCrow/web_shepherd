@@ -333,8 +333,6 @@ function initMultiSlider() {
 // precomputeOtherShepherds removed — shepherds now filter with === this
 // check inline, avoiding per-frame array allocation.
 
-// spatial grid — rebuilt each frame, shared across all agents
-const spatialGrid = new SpatialGrid(Math.max(50, herdParams.r_A));
 
 // FPS counter
 let fpsFrameCount = 0;
@@ -362,6 +360,14 @@ function drawFPS(ctx) {
   ctx.fillStyle = '#fff';
   ctx.fillText(text, 10, 20);
 }
+const fixedStepLoop = {
+  stepMs: PHYSICS.FIXED_TIMESTEP_MS,
+  maxCatchupSteps: PHYSICS.MAX_CATCHUP_STEPS,
+  maxFrameDeltaMs: PHYSICS.MAX_FRAME_DELTA_MS,
+  accumulatorMs: 0,
+  lastFrameTime: null,
+  lastSimulationFrame: null
+};
 
 // Target rendering functions
 function drawTargetFull(ctx) {
@@ -450,160 +456,64 @@ let animationContext = null;
 
 function setAnimationContext(ctx) {
   animationContext = ctx;
+  fixedStepLoop.accumulatorMs = 0;
+  fixedStepLoop.lastFrameTime = null;
+  fixedStepLoop.lastSimulationFrame = null;
 }
 
-function animate() {
-  const canvas = animationContext.canvas;
+function buildSimulationState(canvas) {
+  return {
+    canvasWidth: canvas.width,
+    canvasHeight: canvas.height,
+    herdMembers: herd.members,
+    shepherdMembers: shepherds.members,
+    herdColor: herd.color,
+    shepherdColor: shepherds.color,
+    cursorHerdMember,
+    cursorShepherd,
+    cursorControlsFirstShepherd,
+    mouseX,
+    mouseY,
+    prevMouseX,
+    prevMouseY,
+    targetX,
+    targetY
+  };
+}
+
+function animate(timestamp) {
   const ctx = animationContext;
-  
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const canvas = ctx.canvas;
 
-  // update cursor position based on mode
-  const rawVx = mouseX - prevMouseX;
-  const rawVy = mouseY - prevMouseY;
-  const alpha = PHYSICS.CURSOR_VELOCITY_SMOOTH;
-  
-  if (cursorControlsFirstShepherd) {
-    
-    //shepherds.members[0].x = mouseX;
-    //shepherds.members[0].y = mouseY;
-    // smooth position toward mouse target
-    const beta = PHYSICS.TARGET_POSITION_SMOOTH || 0.03;
-    shepherds.members[0].x = shepherds.members[0].x * (1 - beta) + mouseX * beta;
-    shepherds.members[0].y = shepherds.members[0].y * (1 - beta) + mouseY * beta;
-
-    // smooth velocity to reduce jitter
-    shepherds.members[0].vx = shepherds.members[0].vx * (1 - alpha) + rawVx * alpha;
-    shepherds.members[0].vy = shepherds.members[0].vy * (1 - alpha) + rawVy * alpha;
-    
-    // also update cursor shepherd object for radius visualization
-    //cursorShepherd.x = mouseX;
-    //cursorShepherd.y = mouseY;
-    const betaCursor = PHYSICS.TARGET_POSITION_SMOOTH || 0.03;
-    cursorShepherd.x = cursorShepherd.x * (1 - betaCursor) + mouseX * betaCursor;
-    cursorShepherd.y = cursorShepherd.y * (1 - betaCursor) + mouseY * betaCursor;
-
-
-    cursorShepherd.vx = shepherds.members[0].vx;
-    cursorShepherd.vy = shepherds.members[0].vy;
-  } else {
-
-    // smooth velocity to reduce jitter
-    cursorHerdMember.vx = cursorHerdMember.vx * (1 - alpha) + rawVx * alpha;
-    cursorHerdMember.vy = cursorHerdMember.vy * (1 - alpha) + rawVy * alpha;
-    
-    // smooth position toward mouse target to allow forces (like shepherd repulsion) to act
-    const beta = PHYSICS.TARGET_POSITION_SMOOTH || 0.03;
-    cursorHerdMember.x = cursorHerdMember.x * (1 - beta) + mouseX * beta;
-    cursorHerdMember.y = cursorHerdMember.y * (1 - beta) + mouseY * beta;
+  if (fixedStepLoop.lastFrameTime === null) {
+    fixedStepLoop.lastFrameTime = timestamp;
   }
 
-  // all shepherds navigate to the center target
-  const shepsTargetX = targetX;
-  const shepsTargetY = targetY;
+  const frameDelta = Math.min(
+    fixedStepLoop.maxFrameDeltaMs,
+    timestamp - fixedStepLoop.lastFrameTime
+  );
+  fixedStepLoop.lastFrameTime = timestamp;
+  fixedStepLoop.accumulatorMs += frameDelta;
 
-  // Apply target smoothing (skip in slim mode to lock target at center)
-  //if (typeof isSlim === 'undefined' || !isSlim) {
-
-  // Apply target smoothing only in slim mode 
-  //if (typeof isSlim !== 'undefined' && isSlim) {
-
-  if (false) {
-    const beta = PHYSICS.TARGET_POSITION_SMOOTH || 0.03;
-    targetX = targetX * (1 - beta) + mouseX * beta;
-    targetY = targetY * (1 - beta) + mouseY * beta;
+  const simState = buildSimulationState(canvas);
+  let steps = 0;
+  while (
+    fixedStepLoop.accumulatorMs >= fixedStepLoop.stepMs &&
+    steps < fixedStepLoop.maxCatchupSteps
+  ) {
+    fixedStepLoop.lastSimulationFrame = stepSimulation(simState);
+    fixedStepLoop.accumulatorMs -= fixedStepLoop.stepMs;
+    steps++;
   }
 
-  // update and draw herd (include cursor herd member if in herd mode)
-  const includeCursorHerd = !cursorControlsFirstShepherd;
-  const allMembers = includeCursorHerd ? [...herd.members, cursorHerdMember] : herd.members;
-  const shepsObjects = shepherds.members;
-
-  // rebuild spatial grid with all agents — O(n) per frame
-  spatialGrid.cellSize = Math.max(50, herdParams.r_A, PHYSICS.SHEPHERD_REPEL_MAX_DIST);
-  spatialGrid.invCellSize = 1 / spatialGrid.cellSize;
-  spatialGrid.clear();
-  for (let member of allMembers) spatialGrid.insert(member);
-  for (let shep of shepsObjects) spatialGrid.insert(shep);
-
-  // compute herd centroid (cached for this frame)
-  let centX = 0, centY = 0;
-  for (let member of allMembers) {
-    centX += member.x;
-    centY += member.y;
-  }
-  const centCount = allMembers.length;
-  centX /= centCount;
-  centY /= centCount;
-
-  // draw herd connections (slim mode only) - before drawing members so lines appear behind
-  drawHerdConnections(ctx, allMembers, herdParams.r_A, herd.color, spatialGrid);
-
-  // update each herd member (pass spatial grid for O(1) neighbor lookup)
-  for (let member of allMembers) {
-    member.update(allMembers, shepsObjects, canvas.width, canvas.height, spatialGrid);
-    member.draw(ctx, herd.color);
+  // Ensure first frame has a valid simulation snapshot.
+  if (!fixedStepLoop.lastSimulationFrame) {
+    fixedStepLoop.lastSimulationFrame = stepSimulation(simState);
+    fixedStepLoop.accumulatorMs = 0;
   }
 
-  // draw herd centroid (full mode only)
-  if (modeConfig.SHOW_CENTROIDS) {
-    ctx.fillStyle = COLORS.CENTROID_HERD;
-    ctx.globalAlpha = 0.3;
-    ctx.beginPath();
-    ctx.arc(centX, centY, 8, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = 1.0;
-  }
-
-  // update and draw shepherds (pass full list, each shepherd skips self)
-  //for (let s = 0; s < shepsObjects.length; s++) {
-  //  const shep = shepsObjects[s];
-  //  shep.update(allMembers, shepsObjects, shepsTargetX, shepsTargetY, canvas.width, canvas.height, spatialGrid);
-  //  shep.draw(ctx, shepherds.color);
-  //}
-
-  // update and draw shepherds (pass full list, each shepherd skips self)
-  for (let s = 0; s < shepsObjects.length; s++) {
-    const shep = shepsObjects[s];
-    // skip drawing first shepherd if controlling it with cursor
-    if (cursorControlsFirstShepherd && s === 0) {
-      shep.update(allMembers, shepsObjects, shepsTargetX, shepsTargetY, canvas.width, canvas.height, spatialGrid);
-    } else {
-      shep.update(allMembers, shepsObjects, shepsTargetX, shepsTargetY, canvas.width, canvas.height, spatialGrid);
-      shep.draw(ctx, shepherds.color);
-    }
-  }
-
-  // draw cursor shepherd if in shepherd mode
-  if (cursorControlsFirstShepherd) {
-    cursorShepherd.draw(ctx, shepherds.color);
-  }
-
-  // compute shepherds centroid (cached for this frame)
-  let shepCentX = 0, shepCentY = 0;
-  for (let s of shepherds.members) {
-    shepCentX += s.x;
-    shepCentY += s.y;
-  }
-  shepCentX /= shepherds.members.length;
-  shepCentY /= shepherds.members.length;
-
-  // draw shepherd centroid (full mode only)
-  if (modeConfig.SHOW_CENTROIDS) {
-    ctx.fillStyle = COLORS.CENTROID_SHEPHERD;
-    ctx.globalAlpha = 0.3;
-    ctx.beginPath();
-    ctx.arc(shepCentX, shepCentY, 8, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = 1.0;
-  }
-
-  // draw target at current position
-  if (modeConfig.TARGET_STYLE === 'crosshair') {
-    drawTargetCrosshair(ctx);
-  } else {
-    drawTargetFull(ctx);
-  }
+  renderSimulationFrame(ctx, simState, fixedStepLoop.lastSimulationFrame);
 
   // FPS overlay (full mode only)
   if (modeConfig.SHOW_FPS) {
@@ -685,5 +595,5 @@ function initUI(canvas, ctx) {
   // set up animation context and start loop
   setAnimationContext(ctx);
   enforceConstraints();
-  animate();
+  requestAnimationFrame(animate);
 }
