@@ -72,11 +72,54 @@ function bindSlider(config) {
 function initSliders() {
   SLIDER_CONFIG.forEach(config => bindSlider(config));
 }
+let worldState = null;
+
+function createWorldState(canvas) {
+  const centerX = canvas.width / 2;
+  const centerY = canvas.height / 2;
+
+  const cursorShepherd = Object.create(Shepherd.prototype);
+  cursorShepherd.x = centerX;
+  cursorShepherd.y = centerY;
+  cursorShepherd.vx = 0;
+  cursorShepherd.vy = 0;
+  cursorShepherd.isCursor = true;
+
+  const cursorHerdMember = new HerdMember(centerX, centerY, 0);
+  cursorHerdMember.isCursor = true;
+
+  return {
+    canvasWidth: canvas.width,
+    canvasHeight: canvas.height,
+    herdMembers: herd.members,
+    shepherdMembers: shepherds.members,
+    herdColor: herd.color,
+    shepherdColor: shepherds.color,
+    mouseX: centerX,
+    mouseY: centerY,
+    prevMouseX: centerX,
+    prevMouseY: centerY,
+    cursorHerdMember,
+    cursorShepherd,
+    cursorControlsFirstShepherd: false,
+    targetX: centerX,
+    targetY: centerY,
+    lastSimulationFrame: null,
+    needsWorkerResync: true
+  };
+}
 
 // control population sizes 
 function initPopulationControls() {
   const herdSizeInput = document.getElementById('herd-size-input');
   const shepherdsCountInput = document.getElementById('shepherds-count-input');
+
+  if (herdSizeInput) {
+    herdSizeInput.value = herdSize;
+  }
+  if (shepherdsCountInput) {
+    shepherdsCountInput.value = shepherdSize;
+  }
 
   if (herdSizeInput) {
     herdSizeInput.addEventListener('change', () => {
@@ -92,6 +135,7 @@ function initPopulationControls() {
         for (let i = 0; i < -diff; i++) removeRandomHerdMember();
       }
       herdSize = value;
+      if (worldState) worldState.needsWorkerResync = true;
     });
   }
 
@@ -109,55 +153,35 @@ function initPopulationControls() {
         for (let i = 0; i < -diff; i++) removeRandomShepherd();
       }
       shepherdSize = value;
+      if (worldState) worldState.needsWorkerResync = true;
     });
   }
 }
 
-// mouse play 
-let mouseX = 0;
-let mouseY = 0;
-let prevMouseX = 0;
-let prevMouseY = 0;
 
 function initMouseTracking(canvas) {
-  prevMouseX = canvas.width / 2;
-  prevMouseY = canvas.height / 2;
+  worldState.prevMouseX = canvas.width / 2;
+  worldState.prevMouseY = canvas.height / 2;
+  worldState.mouseX = canvas.width / 2;
+  worldState.mouseY = canvas.height / 2;
   
   canvas.addEventListener('mousemove', e => {
     const rect = canvas.getBoundingClientRect();
-    prevMouseX = mouseX;
-    prevMouseY = mouseY;
-    mouseX = e.clientX - rect.left;
-    mouseY = e.clientY - rect.top;
+    worldState.prevMouseX = worldState.mouseX;
+    worldState.prevMouseY = worldState.mouseY;
+    worldState.mouseX = e.clientX - rect.left;
+    worldState.mouseY = e.clientY - rect.top;
   });
   
   canvas.addEventListener('click', e => {
     const rect = canvas.getBoundingClientRect();
-    targetX = e.clientX - rect.left;
-    targetY = e.clientY - rect.top;
+    worldState.targetX = e.clientX - rect.left;
+    worldState.targetY = e.clientY - rect.top;
   });
 }
 
-// cursor objects (used for cursor control mode)
-let cursorShepherd;
-let cursorHerdMember;
-let cursorControlsFirstShepherd = false;
-let targetX = 0;
-let targetY = 0;
-
 function initCursorObjects(canvas) {
-  cursorShepherd = Object.create(Shepherd.prototype);
-  cursorShepherd.x = canvas.width / 2;
-  cursorShepherd.y = canvas.height / 2;
-  cursorShepherd.vx = 0;
-  cursorShepherd.vy = 0;
-  cursorShepherd.isCursor = true;
-
-  cursorHerdMember = new HerdMember(canvas.width / 2, canvas.height / 2, 0);
-  cursorHerdMember.isCursor = true;
-  
-  targetX = canvas.width / 2;
-  targetY = canvas.height / 2;
+  worldState = createWorldState(canvas);
 }
 
 // cursor mode toggle
@@ -165,7 +189,7 @@ function initCursorModeToggle() {
   const toggle = document.getElementById('cursor-mode-toggle');
   if (toggle) {
     toggle.addEventListener('change', (e) => {
-      cursorControlsFirstShepherd = e.target.checked;
+      worldState.cursorControlsFirstShepherd = e.target.checked;
     });
   }
 }
@@ -376,37 +400,220 @@ const fixedStepLoop = {
 
 // animation 
 let animationContext = null;
+let simulationWorker = null;
+let workerStepInFlight = false;
+let pendingWorkerSteps = 0;
+
+function cloneBehaviorParams() {
+  return {
+    herdParams: { ...herdParams },
+    shepParams: { ...shepParams }
+  };
+}
+
+function serializeAgent(agent) {
+  return {
+    x: agent.x,
+    y: agent.y,
+    vx: agent.vx,
+    vy: agent.vy
+  };
+}
+
+function serializeWorldForWorker() {
+  return {
+    canvasWidth: worldState.canvasWidth,
+    canvasHeight: worldState.canvasHeight,
+    herdMembers: worldState.herdMembers.map(serializeAgent),
+    shepherdMembers: worldState.shepherdMembers.map(serializeAgent),
+    cursorHerdMember: serializeAgent(worldState.cursorHerdMember),
+    cursorShepherd: serializeAgent(worldState.cursorShepherd),
+    cursorControlsFirstShepherd: worldState.cursorControlsFirstShepherd,
+    mouseX: worldState.mouseX,
+    mouseY: worldState.mouseY,
+    prevMouseX: worldState.prevMouseX,
+    prevMouseY: worldState.prevMouseY,
+    targetX: worldState.targetX,
+    targetY: worldState.targetY
+  };
+}
+
+function applyAgentSnapshot(targetAgents, snapshots, createAgent) {
+  while (targetAgents.length < snapshots.length) {
+    targetAgents.push(createAgent(targetAgents.length, snapshots[targetAgents.length]));
+  }
+  while (targetAgents.length > snapshots.length) {
+    targetAgents.pop();
+  }
+
+  for (let i = 0; i < snapshots.length; i++) {
+    targetAgents[i].x = snapshots[i].x;
+    targetAgents[i].y = snapshots[i].y;
+    targetAgents[i].vx = snapshots[i].vx;
+    targetAgents[i].vy = snapshots[i].vy;
+  }
+}
+
+function applyWorkerFrame(message) {
+  applyAgentSnapshot(
+    worldState.herdMembers,
+    message.herdMembers,
+    (_, data) => {
+      const member = new HerdMember(data.x, data.y, 0);
+      member.vx = data.vx;
+      member.vy = data.vy;
+      return member;
+    }
+  );
+
+  applyAgentSnapshot(
+    worldState.shepherdMembers,
+    message.shepherdMembers,
+    (index, data) => {
+      const shepherd = new Shepherd(data.x, data.y, index);
+      shepherd.vx = data.vx;
+      shepherd.vy = data.vy;
+      return shepherd;
+    }
+  );
+
+  worldState.cursorHerdMember.x = message.cursorHerdMember.x;
+  worldState.cursorHerdMember.y = message.cursorHerdMember.y;
+  worldState.cursorHerdMember.vx = message.cursorHerdMember.vx;
+  worldState.cursorHerdMember.vy = message.cursorHerdMember.vy;
+
+  worldState.cursorShepherd.x = message.cursorShepherd.x;
+  worldState.cursorShepherd.y = message.cursorShepherd.y;
+  worldState.cursorShepherd.vx = message.cursorShepherd.vx;
+  worldState.cursorShepherd.vy = message.cursorShepherd.vy;
+
+  herdSize = worldState.herdMembers.length;
+  shepherdSize = worldState.shepherdMembers.length;
+
+  fixedStepLoop.lastSimulationFrame = message.frameData;
+  worldState.lastSimulationFrame = message.frameData;
+}
+
+function computeFallbackFrame(simState) {
+  let herdX = 0;
+  let herdY = 0;
+  let herdCount = 0;
+  for (let i = 0; i < simState.herdMembers.length; i++) {
+    herdX += simState.herdMembers[i].x;
+    herdY += simState.herdMembers[i].y;
+    herdCount++;
+  }
+  if (!simState.cursorControlsFirstShepherd) {
+    herdX += simState.cursorHerdMember.x;
+    herdY += simState.cursorHerdMember.y;
+    herdCount++;
+  }
+
+  let shepX = 0;
+  let shepY = 0;
+  let shepCount = 0;
+  for (let i = 0; i < simState.shepherdMembers.length; i++) {
+    shepX += simState.shepherdMembers[i].x;
+    shepY += simState.shepherdMembers[i].y;
+    shepCount++;
+  }
+
+  return {
+    includeCursorHerd: !simState.cursorControlsFirstShepherd,
+    herdCentroidX: herdCount > 0 ? herdX / herdCount : 0,
+    herdCentroidY: herdCount > 0 ? herdY / herdCount : 0,
+    shepherdCentroidX: shepCount > 0 ? shepX / shepCount : 0,
+    shepherdCentroidY: shepCount > 0 ? shepY / shepCount : 0
+  };
+}
+
+function dispatchWorkerSteps() {
+  if (!simulationWorker || workerStepInFlight || pendingWorkerSteps <= 0) {
+    return;
+  }
+
+  if (worldState.needsWorkerResync) {
+    simulationWorker.postMessage({
+      type: 'resync',
+      snapshot: serializeWorldForWorker(),
+      params: cloneBehaviorParams()
+    });
+    worldState.needsWorkerResync = false;
+  }
+
+  const steps = pendingWorkerSteps;
+  pendingWorkerSteps = 0;
+  workerStepInFlight = true;
+
+  simulationWorker.postMessage({
+    type: 'step',
+    steps,
+    input: {
+      canvasWidth: worldState.canvasWidth,
+      canvasHeight: worldState.canvasHeight,
+      mouseX: worldState.mouseX,
+      mouseY: worldState.mouseY,
+      prevMouseX: worldState.prevMouseX,
+      prevMouseY: worldState.prevMouseY,
+      targetX: worldState.targetX,
+      targetY: worldState.targetY,
+      cursorControlsFirstShepherd: worldState.cursorControlsFirstShepherd
+    },
+    params: cloneBehaviorParams()
+  });
+}
+
+function ensureSimulationWorker() {
+  if (simulationWorker) {
+    return;
+  }
+
+  simulationWorker = new Worker('simulation-worker.js');
+  simulationWorker.addEventListener('message', (event) => {
+    const message = event.data;
+    if (message.type === 'frame') {
+      applyWorkerFrame(message);
+      workerStepInFlight = false;
+      dispatchWorkerSteps();
+      return;
+    }
+    if (message.type === 'error') {
+      workerStepInFlight = false;
+      console.error('Simulation worker error:', message.error);
+    }
+  });
+
+  simulationWorker.postMessage({
+    type: 'init',
+    snapshot: serializeWorldForWorker(),
+    params: cloneBehaviorParams()
+  });
+}
 
 function setAnimationContext(ctx) {
   animationContext = ctx;
   fixedStepLoop.accumulatorMs = 0;
   fixedStepLoop.lastFrameTime = null;
   fixedStepLoop.lastSimulationFrame = null;
+  pendingWorkerSteps = 0;
+  workerStepInFlight = false;
 }
 
 function buildSimulationState(canvas) {
-  return {
-    canvasWidth: canvas.width,
-    canvasHeight: canvas.height,
-    herdMembers: herd.members,
-    shepherdMembers: shepherds.members,
-    herdColor: herd.color,
-    shepherdColor: shepherds.color,
-    cursorHerdMember,
-    cursorShepherd,
-    cursorControlsFirstShepherd,
-    mouseX,
-    mouseY,
-    prevMouseX,
-    prevMouseY,
-    targetX,
-    targetY
-  };
+  worldState.canvasWidth = canvas.width;
+  worldState.canvasHeight = canvas.height;
+  worldState.herdMembers = herd.members;
+  worldState.shepherdMembers = shepherds.members;
+  worldState.herdColor = herd.color;
+  worldState.shepherdColor = shepherds.color;
+  return worldState;
 }
 
 function animate(timestamp) {
   const ctx = animationContext;
   const canvas = ctx.canvas;
+  const simState = buildSimulationState(canvas);
+  ensureSimulationWorker();
 
   if (fixedStepLoop.lastFrameTime === null) {
     fixedStepLoop.lastFrameTime = timestamp;
@@ -418,25 +625,25 @@ function animate(timestamp) {
   );
   fixedStepLoop.lastFrameTime = timestamp;
   fixedStepLoop.accumulatorMs += frameDelta;
-
-  const simState = buildSimulationState(canvas);
-  let steps = 0;
+  let stepsToRun = 0;
   while (
     fixedStepLoop.accumulatorMs >= fixedStepLoop.stepMs &&
-    steps < fixedStepLoop.maxCatchupSteps
+    stepsToRun < fixedStepLoop.maxCatchupSteps
   ) {
-    fixedStepLoop.lastSimulationFrame = stepSimulation(simState);
     fixedStepLoop.accumulatorMs -= fixedStepLoop.stepMs;
-    steps++;
+    stepsToRun++;
   }
 
-  // Ensure first frame has a valid simulation snapshot.
-  if (!fixedStepLoop.lastSimulationFrame) {
-    fixedStepLoop.lastSimulationFrame = stepSimulation(simState);
-    fixedStepLoop.accumulatorMs = 0;
+  if (stepsToRun > 0) {
+    pendingWorkerSteps = Math.min(
+      pendingWorkerSteps + stepsToRun,
+      fixedStepLoop.maxCatchupSteps * 2
+    );
+    dispatchWorkerSteps();
   }
 
-  renderSimulationFrame(ctx, simState, fixedStepLoop.lastSimulationFrame);
+  const frameData = fixedStepLoop.lastSimulationFrame || computeFallbackFrame(simState);
+  renderSimulationFrame(ctx, simState, frameData);
 
   updateFPS();
   drawFPS(ctx);
@@ -469,8 +676,8 @@ function initUI(canvas, ctx) {
   });
   
   // initialize interaction systems
-  initMouseTracking(canvas);
   initCursorObjects(canvas);
+  initMouseTracking(canvas);
   
   // set up animation context and start loop
   setAnimationContext(ctx);
