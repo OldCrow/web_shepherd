@@ -1,5 +1,7 @@
 // renderer
-// Responsible for drawing only; simulation updates live in simulation-core.js.
+// Responsible for drawing only; simulation updates live in simulation-core.js
+// (run in the simulation worker). frameData carries plain data from the worker,
+// so the live agent objects to draw always come from simState.
 // Mode-aware: slim mode draws herd connections and a crosshair target,
 // full mode draws centroids and the full target marker.
 
@@ -7,10 +9,12 @@ function renderSimulationFrame(ctx, simState, frameData) {
   const canvas = ctx.canvas;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  const allMembers = frameData.allMembers || simState.herdMembers;
+  const allMembers = frameData.includeCursorHerd
+    ? [...simState.herdMembers, simState.cursorHerdMember]
+    : simState.herdMembers;
 
   // draw herd connections (slim mode only) - before members so lines appear behind
-  drawHerdConnections(ctx, allMembers, herdParams.r_A, simState.herdColor, simulationGrid);
+  drawHerdConnections(ctx, allMembers, herdParams.r_A, simState.herdColor);
 
   for (let i = 0; i < allMembers.length; i++) {
     allMembers[i].draw(ctx, simState.herdColor);
@@ -44,8 +48,8 @@ function renderSimulationFrame(ctx, simState, frameData) {
 
   // draw target at current position (style per mode)
   if (modeConfig.TARGET_STYLE === 'crosshair') {
-    drawTargetCrosshair(ctx);
+    drawTargetCrosshair(ctx, simState.targetX, simState.targetY);
   } else {
-    drawTargetFull(ctx);
+    drawTargetFull(ctx, simState.targetX, simState.targetY);
   }
 }

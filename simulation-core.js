@@ -99,9 +99,10 @@ function stepSimulation(simState) {
   const herdCentroid = computeCentroid(allMembers);
   const shepherdCentroid = computeCentroid(shepsObjects);
 
+  // Note: only plain data here — this object crosses the worker
+  // postMessage boundary, so live agent objects must not be included.
   return {
     includeCursorHerd,
-    allMembers,
     herdCentroidX: herdCentroid.x,
     herdCentroidY: herdCentroid.y,
     shepherdCentroidX: shepherdCentroid.x,
