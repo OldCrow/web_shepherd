@@ -1,93 +1,154 @@
 # Performance Optimization
 
-This document describes the performance optimizations applied to web_shepherd, the methodology used, and the measured results.
+This document summarizes optimization work in two phases:
 
-## Problem Statement
+1. **Phase 1: O(n) performance pass** (core runtime speedup).
+2. **Phase 2: refactor/threading pass** (architecture, worker offload, and data-path improvements).
 
-The simulation runs an O(n²) neighbor scan per frame: every agent checks distance to every other agent. At the default n=25 (20 herd + 5 shepherds) this is 625 distance computations per frame — manageable at 60fps. At n=200 it becomes 40,000, and at n=500 it reaches 250,000, exceeding the 16.67ms frame budget and causing visible stutter.
+The goal is to keep a single narrative that shows what changed, why it changed, and where diminishing returns start.
 
-Additional overhead comes from per-frame JavaScript object allocation (`{vx, vy}` return values, array spreads, pre-computed neighbor lists), unnecessary `Math.sqrt()` in distance comparisons, and individual canvas draw calls per agent.
+## Optimization Timeline
 
-## Methodology
+### Phase 1: O(n) Performance Pass
 
-Each optimization was implemented incrementally with visual validation at each step:
+#### Problem Statement
 
-1. Baseline FPS measurement at multiple agent counts
-2. Implementation of one optimization at a time
-3. Visual comparison to confirm behavior unchanged
-4. FPS measurement to quantify impact
+The original simulation spent most time in O(n²) neighbor scans: every agent checked every other agent every frame. At higher counts this exceeded frame budgets and caused visible stutter.
 
-## Changes by File
+Additional overhead came from:
+- per-frame temporary object allocation
+- unnecessary `Math.sqrt()` calls in range checks
+- avoidable array copies in hot paths
 
-### New files
+#### Methodology
 
-**`spatial-grid.js`** — 2D spatial hash grid with Cantor-pairing hash. `clear()`, `insert(agent)`, `query(x, y, radius)`. Cell size set to max interaction radius. O(1) insert, O(k) query where k = local density.
+Optimizations were applied incrementally:
 
-### Modified files
+1. Baseline FPS measurement at multiple agent counts.
+2. One optimization at a time.
+3. Visual validation to confirm behavior stayed consistent.
+4. Re-measurement after each change.
 
-**`vector-math.js`** — Added `distanceSquared()`, `magnitudeSquared()`, and `limitMagnitudeInto()` (GC-free, writes to pre-allocated output object).
+#### Key Changes (Phase 1)
 
-**`agent_herd.js`** — Range comparisons use squared distances (no sqrt). Spatial grid query for nearby herd members. `limitMagnitude` calls replaced with GC-free `limitMagnitudeInto`.
+**New file**
+- `spatial-grid.js`
+  - Added a 2D spatial hash grid for local neighbor queries.
+  - Replaced broad full-list interaction checks with local cell lookups in hot paths.
 
-**`agent_shepherd.js`** — Closest herd member: full list scan (global search, not grid — wrapping requires it). Shepherd repulsion: grid query with `instanceof` filter. Squared distance comparisons throughout.
+**Modified files**
+- `vector-math.js`
+  - Added squared-distance and GC-free vector limit helpers.
+- `agent_herd.js`
+  - Switched radius checks to squared-distance comparisons.
+  - Used spatial-grid neighbor queries for herd interactions.
+- `agent_shepherd.js`
+  - Kept closest-herd search global for behavior correctness.
+  - Used spatial-grid filtering for nearby shepherd repulsion.
+- `ui.js`
+  - Removed avoidable per-frame allocations.
+  - Added FPS overlay.
+- `index.html`
+  - Included `spatial-grid.js`.
 
-**`ui.js`** — Spatial grid built once per frame, shared across all agents. Removed `precomputeOtherShepherds()` (per-frame array allocation). Removed `[...herd.members, cursorHerdMember]` spread. Added FPS counter overlay.
+#### Design Notes (Phase 1)
 
-**`index.html`** — Added `spatial-grid.js` script tag.
+- **Spatial hash grid vs KD-tree**: chosen for low implementation complexity and efficient rebuild/query behavior in browser JS.
+- **GC avoidance**: reduced short-lived allocations in frame-critical paths.
 
-**`config.js`** — No changes (parameters unchanged).
+#### Measured Results (Phase 1)
 
-## Design Decisions
+Tested on a 144Hz monitor (vsync-capped by `requestAnimationFrame`):
 
-### Spatial hash grid vs KD-tree
+| Agents | FPS | Notes |
+|--------|-----|-------|
+| 25     | 144 | Default config, vsync-capped |
+| 80     | 144 | UI-range counts still capped |
+| 1100   | 144 | Still capped |
+| 2100   | ~100 | First measurable drop |
 
-In browser JavaScript, a spatial hash grid is preferred over a KD-tree for several reasons:
-- Constant-time insert and query for uniform agent density (no tree balancing overhead)
-- Cache-friendly flat array layout vs pointer-heavy tree structure
-- Simpler implementation with no external dependencies
-- Rebuild cost is O(n) per frame (just clear and re-insert), vs O(n log n) for KD-tree construction
+At scale, this extended practical counts from low hundreds into the low thousands.
 
-The grid cell size is set to the maximum interaction radius, ensuring that all neighbors within range fall in the same or adjacent cells (9-cell query in 2D).
+### Phase 2: Refactor, Threading, and Data-Path Improvements
 
-### GC avoidance patterns
+Phase 1 focused on raw algorithmic speed. Phase 2 focused on architecture and sustained behavior under load.
 
-JavaScript's garbage collector can cause frame drops when many short-lived objects are allocated per frame. The patterns used:
-- Pre-allocated output objects for vector math operations (mutated in place, never garbage collected)
-- Persistent arrays resized only when population changes, not recreated per frame
-- Inline filtering (`=== this` check) instead of creating filtered arrays
+#### 1) Simulation/Render Separation
 
-### Batched canvas rendering
+- Added `simulation-core.js` for simulation update logic.
+- Added `renderer.js` for drawing logic.
+- Split previously monolithic frame logic in `ui.js`.
 
-Canvas 2D `beginPath()`/`fill()` calls have per-call overhead. Batching all triangles of the same color into a single path reduces draw calls from O(n) to O(1) per agent type.
+#### 2) Fixed-Step Simulation Loop
 
-## Measured Results
+- Introduced fixed-step accumulator scheduling in `ui.js`.
+- Added timing controls in `config.js`:
+  - `FIXED_TIMESTEP_MS`
+  - `MAX_CATCHUP_STEPS`
+  - `MAX_FRAME_DELTA_MS`
+- Tuned simulation step rate to **120Hz** to better match pre-refactor traversal feel on high-refresh systems.
 
-Tested on a 144Hz monitor (FPS capped at 144 by vsync via `requestAnimationFrame`).
+#### 3) Worker Offload
 
-| Agents | After (FPS) | Notes |
-|--------|-------------|-------|
-| 25     | 144         | Default config, vsync-capped |
-| 80     | 144         | Max from UI increment buttons |
-| 1100   | 144         | Still vsync-capped |
-| 2100   | ~100        | First measurable drop |
+- Added `simulation-worker.js`.
+- Moved simulation stepping off the main thread.
+- Main thread now focuses on UI/input/render and worker orchestration.
 
-The original O(n²) implementation would compute ~4.4M distance checks per frame at n=2100, estimated at ~70ms/frame (~14 FPS). The optimized version maintains ~100 FPS at the same count — approximately 7× improvement at scale.
+#### 4) Hot-State Transport Moved to SoA
 
-At typical agent counts (25–200), both implementations are vsync-capped, so the optimization primarily extends the usable agent range from ~200 to 2000+.
+- Worker ↔ main thread snapshots now use packed `Float32Array` data (`[x, y, vx, vy]` stride) instead of per-agent object arrays.
+- Added transfer-list usage for init/resync and per-frame worker messages.
+- Result: less allocation churn and lower message serialization overhead.
 
-## Future Work
+#### 5) Correctness and UX Fixes
 
-### Performance
-- **Web Workers**: offload physics computation to a worker thread, leaving the main thread for rendering only
-- **OffscreenCanvas**: render in a worker thread for zero-jank drawing
-- **WebGL rendering**: replace Canvas 2D with WebGL for GPU-accelerated agent drawing at very high agent counts
-- **Typed arrays**: store agent positions/velocities in Float32Arrays for better memory layout and potential SIMD via WebAssembly
-- **Canvas batching**: batch all herd triangles into a single `beginPath()`/`fill()` call, same for shepherds (reduces draw calls from O(n) to O(1) per agent type)
+- **Spatial-grid key correctness**
+  - Cantor pairing is bijective for non-negative pairs only.
+  - Query bounds were clamped to non-negative cells to prevent key collisions near top/left edges.
+- **Toroidal centroid fix**
+  - Replaced arithmetic mean with circular mean for wrapped canvas coordinates.
+  - Prevents centroid marker jumps across wrap boundaries.
+- **Population input initialization**
+  - UI counters now initialize from actual simulation sizes.
 
-### Upstream UI bugs (pre-existing)
-- **Population counter initialization**: herd/shepherd size inputs default to HTML `value` attribute (40) instead of the actual agent count from config (20 herd, 5 shepherds). Changing the counter causes a large jump in agent count.
-- **Wrap-around centroid**: centroid markers jump when agents wrap across canvas edges, because the centroid is a simple positional average that doesn't account for toroidal topology. A circular mean would fix this.
+#### Observed Behavior (Phase 2)
+
+Manual observations on the current branch:
+
+- FPS stayed near monitor cap up to roughly **~2500 agents**.
+- After that, FPS declined roughly linearly.
+- Around **~4000 agents**, FPS dropped below **~100**.
+
+Exact numbers depend on hardware/browser/refresh rate, but trend direction is consistent.
+
+## Current Architecture (Post-Refactor)
+
+- **Main thread**
+  - DOM/UI
+  - input capture
+  - rendering
+  - fixed-step scheduling and worker coordination
+- **Worker thread**
+  - simulation stepping
+  - neighbor-grid rebuild/query
+  - centroid computation
+  - packed-state emission
+
+## Diminishing Returns and Remaining Work
+
+The branch is in a good reviewable state for upstream PR work. Additional work is possible, but likely higher effort per gain.
+
+Remaining bottlenecks:
+- Shepherd nearest-herd logic still performs global scan (`O(H * S)`).
+- Canvas rendering remains linear in agent count.
+- Simulation internals are still object-based; SoA currently optimizes transport, not full compute storage.
+
+If more scale is required, high-value next steps are:
+
+1. Move simulation internals to full SoA storage/update loops.
+2. Revisit shepherd target selection to reduce full-scan cost.
+3. Move rendering to WebGL if draw cost becomes dominant.
 
 ## Dependencies
 
-None. All optimizations use vanilla JavaScript.
+None. All optimizations use vanilla JavaScript and browser-native APIs.
