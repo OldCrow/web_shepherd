@@ -41,33 +41,59 @@ function rebuildSimulationGrid(simState, includeCursorHerd) {
   for (let shep of simState.shepherdMembers) simulationGrid.insert(shep);
 }
 
-function computeCentroid(members, extraMember = null) {
-  let sumX = 0;
-  let sumY = 0;
-  let count = 0;
+function _computeCircularCoordinate(values, period) {
+  if (values.length === 0 || period <= 0) return 0;
+
+  // Circular mean on [0, period): map to angle, average unit vectors, map back.
+  // This keeps means stable when values straddle wrap boundaries.
+  let sumSin = 0;
+  let sumCos = 0;
+  const factor = (2 * Math.PI) / period;
+
+  for (let i = 0; i < values.length; i++) {
+    const angle = values[i] * factor;
+    sumSin += Math.sin(angle);
+    sumCos += Math.cos(angle);
+  }
+
+  const magnitudeSq = sumSin * sumSin + sumCos * sumCos;
+  if (magnitudeSq < 1e-12) {
+    // Ambiguous circular mean (uniform/opposed spread): fall back to arithmetic.
+    let sum = 0;
+    for (let i = 0; i < values.length; i++) sum += values[i];
+    return sum / values.length;
+  }
+
+  let angle = Math.atan2(sumSin, sumCos);
+  if (angle < 0) angle += 2 * Math.PI;
+  return (angle / (2 * Math.PI)) * period;
+}
+
+function computeToroidalCentroid(members, width, height, extraMember = null) {
+  const xs = [];
+  const ys = [];
 
   for (let i = 0; i < members.length; i++) {
-    sumX += members[i].x;
-    sumY += members[i].y;
-    count++;
+    xs.push(members[i].x);
+    ys.push(members[i].y);
   }
 
   if (extraMember) {
-    sumX += extraMember.x;
-    sumY += extraMember.y;
-    count++;
+    xs.push(extraMember.x);
+    ys.push(extraMember.y);
   }
 
-  if (count === 0) {
+  if (xs.length === 0) {
     return { x: 0, y: 0, count: 0 };
   }
 
   return {
-    x: sumX / count,
-    y: sumY / count,
-    count
+    x: _computeCircularCoordinate(xs, width),
+    y: _computeCircularCoordinate(ys, height),
+    count: xs.length
   };
 }
+
 
 function stepSimulation(simState) {
   updateCursorState(simState);
@@ -97,8 +123,17 @@ function stepSimulation(simState) {
     );
   }
 
-  const herdCentroid = computeCentroid(allMembers, includeCursorHerd ? simState.cursorHerdMember : null);
-  const shepherdCentroid = computeCentroid(shepsObjects);
+  const herdCentroid = computeToroidalCentroid(
+    allMembers,
+    simState.canvasWidth,
+    simState.canvasHeight,
+    includeCursorHerd ? simState.cursorHerdMember : null
+  );
+  const shepherdCentroid = computeToroidalCentroid(
+    shepsObjects,
+    simState.canvasWidth,
+    simState.canvasHeight
+  );
 
   return {
     includeCursorHerd,

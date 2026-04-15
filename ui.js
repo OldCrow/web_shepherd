@@ -495,35 +495,25 @@ function applyWorkerFrame(message) {
 }
 
 function computeFallbackFrame(simState) {
-  let herdX = 0;
-  let herdY = 0;
-  let herdCount = 0;
-  for (let i = 0; i < simState.herdMembers.length; i++) {
-    herdX += simState.herdMembers[i].x;
-    herdY += simState.herdMembers[i].y;
-    herdCount++;
-  }
-  if (!simState.cursorControlsFirstShepherd) {
-    herdX += simState.cursorHerdMember.x;
-    herdY += simState.cursorHerdMember.y;
-    herdCount++;
-  }
-
-  let shepX = 0;
-  let shepY = 0;
-  let shepCount = 0;
-  for (let i = 0; i < simState.shepherdMembers.length; i++) {
-    shepX += simState.shepherdMembers[i].x;
-    shepY += simState.shepherdMembers[i].y;
-    shepCount++;
-  }
+  const includeCursorHerd = !simState.cursorControlsFirstShepherd;
+  const herdCentroid = computeToroidalCentroid(
+    simState.herdMembers,
+    simState.canvasWidth,
+    simState.canvasHeight,
+    includeCursorHerd ? simState.cursorHerdMember : null
+  );
+  const shepherdCentroid = computeToroidalCentroid(
+    simState.shepherdMembers,
+    simState.canvasWidth,
+    simState.canvasHeight
+  );
 
   return {
-    includeCursorHerd: !simState.cursorControlsFirstShepherd,
-    herdCentroidX: herdCount > 0 ? herdX / herdCount : 0,
-    herdCentroidY: herdCount > 0 ? herdY / herdCount : 0,
-    shepherdCentroidX: shepCount > 0 ? shepX / shepCount : 0,
-    shepherdCentroidY: shepCount > 0 ? shepY / shepCount : 0
+    includeCursorHerd,
+    herdCentroidX: herdCentroid.x,
+    herdCentroidY: herdCentroid.y,
+    shepherdCentroidX: shepherdCentroid.x,
+    shepherdCentroidY: shepherdCentroid.y
   };
 }
 
