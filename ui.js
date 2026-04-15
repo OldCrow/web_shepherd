@@ -411,23 +411,34 @@ function cloneBehaviorParams() {
   };
 }
 
-function serializeAgent(agent) {
-  return {
-    x: agent.x,
-    y: agent.y,
-    vx: agent.vx,
-    vy: agent.vy
-  };
+const PACKED_AGENT_STRIDE = 4; // x, y, vx, vy
+
+function packAgentsSoA(agents) {
+  const packed = new Float32Array(agents.length * PACKED_AGENT_STRIDE);
+  for (let i = 0; i < agents.length; i++) {
+    const base = i * PACKED_AGENT_STRIDE;
+    packed[base] = agents[i].x;
+    packed[base + 1] = agents[i].y;
+    packed[base + 2] = agents[i].vx;
+    packed[base + 3] = agents[i].vy;
+  }
+  return packed;
+}
+
+function packSingleAgentSoA(agent) {
+  return new Float32Array([agent.x, agent.y, agent.vx, agent.vy]);
 }
 
 function serializeWorldForWorker() {
   return {
     canvasWidth: worldState.canvasWidth,
     canvasHeight: worldState.canvasHeight,
-    herdMembers: worldState.herdMembers.map(serializeAgent),
-    shepherdMembers: worldState.shepherdMembers.map(serializeAgent),
-    cursorHerdMember: serializeAgent(worldState.cursorHerdMember),
-    cursorShepherd: serializeAgent(worldState.cursorShepherd),
+    herdCount: worldState.herdMembers.length,
+    herdState: packAgentsSoA(worldState.herdMembers),
+    shepherdCount: worldState.shepherdMembers.length,
+    shepherdState: packAgentsSoA(worldState.shepherdMembers),
+    cursorHerdState: packSingleAgentSoA(worldState.cursorHerdMember),
+    cursorShepherdState: packSingleAgentSoA(worldState.cursorShepherd),
     cursorControlsFirstShepherd: worldState.cursorControlsFirstShepherd,
     mouseX: worldState.mouseX,
     mouseY: worldState.mouseY,
@@ -438,54 +449,75 @@ function serializeWorldForWorker() {
   };
 }
 
-function applyAgentSnapshot(targetAgents, snapshots, createAgent) {
-  while (targetAgents.length < snapshots.length) {
-    targetAgents.push(createAgent(targetAgents.length, snapshots[targetAgents.length]));
+function getSnapshotTransferList(snapshot) {
+  return [
+    snapshot.herdState.buffer,
+    snapshot.shepherdState.buffer,
+    snapshot.cursorHerdState.buffer,
+    snapshot.cursorShepherdState.buffer
+  ];
+}
+
+function applyPackedAgentSnapshot(targetAgents, packedState, count, createAgent) {
+  while (targetAgents.length < count) {
+    const base = targetAgents.length * PACKED_AGENT_STRIDE;
+    targetAgents.push(
+      createAgent(
+        targetAgents.length,
+        packedState[base],
+        packedState[base + 1],
+        packedState[base + 2],
+        packedState[base + 3]
+      )
+    );
   }
-  while (targetAgents.length > snapshots.length) {
+  while (targetAgents.length > count) {
     targetAgents.pop();
   }
 
-  for (let i = 0; i < snapshots.length; i++) {
-    targetAgents[i].x = snapshots[i].x;
-    targetAgents[i].y = snapshots[i].y;
-    targetAgents[i].vx = snapshots[i].vx;
-    targetAgents[i].vy = snapshots[i].vy;
+  for (let i = 0; i < count; i++) {
+    const base = i * PACKED_AGENT_STRIDE;
+    targetAgents[i].x = packedState[base];
+    targetAgents[i].y = packedState[base + 1];
+    targetAgents[i].vx = packedState[base + 2];
+    targetAgents[i].vy = packedState[base + 3];
   }
 }
 
 function applyWorkerFrame(message) {
-  applyAgentSnapshot(
+  applyPackedAgentSnapshot(
     worldState.herdMembers,
-    message.herdMembers,
-    (_, data) => {
-      const member = new HerdMember(data.x, data.y, 0);
-      member.vx = data.vx;
-      member.vy = data.vy;
+    message.herdState,
+    message.herdCount,
+    (_, x, y, vx, vy) => {
+      const member = new HerdMember(x, y, 0);
+      member.vx = vx;
+      member.vy = vy;
       return member;
     }
   );
 
-  applyAgentSnapshot(
+  applyPackedAgentSnapshot(
     worldState.shepherdMembers,
-    message.shepherdMembers,
-    (index, data) => {
-      const shepherd = new Shepherd(data.x, data.y, index);
-      shepherd.vx = data.vx;
-      shepherd.vy = data.vy;
+    message.shepherdState,
+    message.shepherdCount,
+    (index, x, y, vx, vy) => {
+      const shepherd = new Shepherd(x, y, index);
+      shepherd.vx = vx;
+      shepherd.vy = vy;
       return shepherd;
     }
   );
 
-  worldState.cursorHerdMember.x = message.cursorHerdMember.x;
-  worldState.cursorHerdMember.y = message.cursorHerdMember.y;
-  worldState.cursorHerdMember.vx = message.cursorHerdMember.vx;
-  worldState.cursorHerdMember.vy = message.cursorHerdMember.vy;
+  worldState.cursorHerdMember.x = message.cursorHerdState[0];
+  worldState.cursorHerdMember.y = message.cursorHerdState[1];
+  worldState.cursorHerdMember.vx = message.cursorHerdState[2];
+  worldState.cursorHerdMember.vy = message.cursorHerdState[3];
 
-  worldState.cursorShepherd.x = message.cursorShepherd.x;
-  worldState.cursorShepherd.y = message.cursorShepherd.y;
-  worldState.cursorShepherd.vx = message.cursorShepherd.vx;
-  worldState.cursorShepherd.vy = message.cursorShepherd.vy;
+  worldState.cursorShepherd.x = message.cursorShepherdState[0];
+  worldState.cursorShepherd.y = message.cursorShepherdState[1];
+  worldState.cursorShepherd.vx = message.cursorShepherdState[2];
+  worldState.cursorShepherd.vy = message.cursorShepherdState[3];
 
   herdSize = worldState.herdMembers.length;
   shepherdSize = worldState.shepherdMembers.length;
@@ -523,11 +555,12 @@ function dispatchWorkerSteps() {
   }
 
   if (worldState.needsWorkerResync) {
+    const resyncSnapshot = serializeWorldForWorker();
     simulationWorker.postMessage({
       type: 'resync',
-      snapshot: serializeWorldForWorker(),
+      snapshot: resyncSnapshot,
       params: cloneBehaviorParams()
-    });
+    }, getSnapshotTransferList(resyncSnapshot));
     worldState.needsWorkerResync = false;
   }
 
@@ -573,11 +606,13 @@ function ensureSimulationWorker() {
     }
   });
 
+  const initSnapshot = serializeWorldForWorker();
   simulationWorker.postMessage({
     type: 'init',
-    snapshot: serializeWorldForWorker(),
+    snapshot: initSnapshot,
     params: cloneBehaviorParams()
-  });
+  }, getSnapshotTransferList(initSnapshot));
+  worldState.needsWorkerResync = false;
 }
 
 function setAnimationContext(ctx) {
