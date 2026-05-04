@@ -321,7 +321,7 @@ function initMultiSlider() {
   });
   
   // mouse up
-  document.addEventListener('mouseup', (e) => {
+  document.addEventListener('mouseup', () => {
     if (multiSliderDragState.isDragging) {
       const behavior = multiSliderDragState.behavior;
       const btn = buttons[behavior];
