@@ -487,10 +487,12 @@ function animate() {
   const shepsTargetX = targetX;
   const shepsTargetY = targetY;
 
-  // Apply target smoothing
-  const beta = PHYSICS.TARGET_POSITION_SMOOTH || 0.03;
-  targetX = targetX * (1 - beta) + mouseX * beta;
-  targetY = targetY * (1 - beta) + mouseY * beta;
+  // Apply target smoothing (skip in slim mode to lock target at center)
+  if (typeof isSlim === 'undefined' || !isSlim) {
+    const beta = PHYSICS.TARGET_POSITION_SMOOTH || 0.03;
+    targetX = targetX * (1 - beta) + mouseX * beta;
+    targetY = targetY * (1 - beta) + mouseY * beta;
+  }
 
   // update and draw herd (include cursor herd member if in herd mode)
   const allMembers = herd.members;
