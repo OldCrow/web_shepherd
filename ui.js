@@ -405,6 +405,45 @@ function drawTargetCrosshair(ctx) {
   ctx.fill();
 }
 
+// Draw connections between nearby herd members (slim mode only)
+function drawHerdConnections(ctx, members, maxDistance, color, spatialGrid) {
+  if (!isSlim) return;
+  
+  const maxDistSq = 1*(maxDistance * maxDistance);
+  const lineColor = color.replace(/[\d.]+\)$/, '0.3)'); // reduce alpha for subtle lines
+  
+  ctx.strokeStyle = lineColor;
+  ctx.lineWidth = 1;
+  
+  for (let i = 0; i < members.length; i++) {
+    const member = members[i];
+    
+    // query nearby members using spatial grid
+    const nearby = spatialGrid.query(member.x, member.y, maxDistance);
+    
+    for (let other of nearby) {
+      if (other === member) continue;
+      
+      // find index of other in members array
+      const otherIndex = members.indexOf(other);
+      
+      // only draw if this member comes before other (to avoid duplicates)
+      if (i >= otherIndex) continue;
+      
+      const dx = member.x - other.x;
+      const dy = member.y - other.y;
+      const distSq = dx * dx + dy * dy;
+      
+      if (distSq < maxDistSq) {
+        ctx.beginPath();
+        ctx.moveTo(member.x, member.y);
+        ctx.lineTo(other.x, other.y);
+        ctx.stroke();
+      }
+    }
+  }
+}
+
 // animation 
 let animationContext = null;
 
@@ -478,6 +517,9 @@ function animate() {
   const centCount = allMembers.length + (includeCursorHerd ? 1 : 0);
   centX /= centCount;
   centY /= centCount;
+
+  // draw herd connections (slim mode only) - before drawing members so lines appear behind
+  drawHerdConnections(ctx, allMembers, herdParams.r_A, herd.color, spatialGrid);
 
   // update each herd member (pass spatial grid for O(1) neighbor lookup)
   for (let member of allMembers) {
