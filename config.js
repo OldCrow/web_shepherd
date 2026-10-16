@@ -119,9 +119,13 @@ if (typeof APP_MODE !== 'undefined' && APP_MODE === 'slim') {
   shepParams.r_S = (herdParams.r_A - 0.5) - 1;
   
   // increase shepherd aggression
-  shepParams.a_N = 1.0;     // navigation gain (was 0.9)
-  shepParams.a_R_s = 1.0;   // repulsion gain (was 0.9)
-  shepParams.a_R_s_v = 2 * Math.sqrt(shepParams.a_R_s);
+  shepParams.a_N *= 1.0;     // navigation gain (was 0.9)
+  shepParams.a_R_s *= 3.0;   // repulsion gain (was 0.9)
+  shepParams.a_R_s_v = 1 * Math.sqrt(shepParams.a_R_s);
+
+  // increase drag
+  herdParams.a_V *= 3;   // drag gain (was 1.0)
+  shepParams.a_V_s *= 2;   // drag gain 
 }
 
 // min/max values for UI sliders (fixed)
