@@ -135,7 +135,7 @@ function initMouseTracking(canvas) {
 // cursor objects (used for cursor control mode)
 let cursorShepherd;
 let cursorHerdMember;
-let cursorControlsFirstShepherd = false;
+let cursorControlsFirstShepherd = typeof isSlim !== 'undefined' && isSlim ? true : false;
 let targetX = 0;
 let targetY = 0;
 
@@ -158,6 +158,7 @@ function initCursorObjects(canvas) {
 function initCursorModeToggle() {
   const toggle = document.getElementById('cursor-mode-toggle');
   if (toggle) {
+    toggle.checked = cursorControlsFirstShepherd;
     toggle.addEventListener('change', (e) => {
       cursorControlsFirstShepherd = e.target.checked;
     });
