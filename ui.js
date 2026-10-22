@@ -476,11 +476,14 @@ function animate() {
     cursorShepherd.vx = shepherds.members[0].vx;
     cursorShepherd.vy = shepherds.members[0].vy;
   } else {
-    cursorHerdMember.x = mouseX;
-    cursorHerdMember.y = mouseY;
     // smooth velocity to reduce jitter
     cursorHerdMember.vx = cursorHerdMember.vx * (1 - alpha) + rawVx * alpha;
     cursorHerdMember.vy = cursorHerdMember.vy * (1 - alpha) + rawVy * alpha;
+    
+    // smooth position toward mouse target to allow forces (like shepherd repulsion) to act
+    const beta = PHYSICS.TARGET_POSITION_SMOOTH || 0.03;
+    cursorHerdMember.x = cursorHerdMember.x * (1 - beta) + mouseX * beta;
+    cursorHerdMember.y = cursorHerdMember.y * (1 - beta) + mouseY * beta;
   }
 
   // all shepherds navigate to the center target
@@ -495,8 +498,8 @@ function animate() {
   }
 
   // update and draw herd (include cursor herd member if in herd mode)
-  const allMembers = herd.members;
   const includeCursorHerd = !cursorControlsFirstShepherd;
+  const allMembers = includeCursorHerd ? [...herd.members, cursorHerdMember] : herd.members;
   const shepsObjects = shepherds.members;
 
   // rebuild spatial grid with all agents — O(n) per frame
@@ -504,7 +507,6 @@ function animate() {
   spatialGrid.invCellSize = 1 / spatialGrid.cellSize;
   spatialGrid.clear();
   for (let member of allMembers) spatialGrid.insert(member);
-  if (includeCursorHerd) spatialGrid.insert(cursorHerdMember);
   for (let shep of shepsObjects) spatialGrid.insert(shep);
 
   // compute herd centroid (cached for this frame)
@@ -513,11 +515,7 @@ function animate() {
     centX += member.x;
     centY += member.y;
   }
-  if (includeCursorHerd) {
-    centX += cursorHerdMember.x;
-    centY += cursorHerdMember.y;
-  }
-  const centCount = allMembers.length + (includeCursorHerd ? 1 : 0);
+  const centCount = allMembers.length;
   centX /= centCount;
   centY /= centCount;
 
@@ -528,10 +526,6 @@ function animate() {
   for (let member of allMembers) {
     member.update(allMembers, shepsObjects, canvas.width, canvas.height, spatialGrid);
     member.draw(ctx, herd.color);
-  }
-  if (includeCursorHerd) {
-    cursorHerdMember.update(allMembers, shepsObjects, canvas.width, canvas.height, spatialGrid);
-    cursorHerdMember.draw(ctx, herd.color);
   }
 
   // draw herd centroid (full mode only)
