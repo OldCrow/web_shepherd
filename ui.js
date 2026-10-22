@@ -464,18 +464,30 @@ function animate() {
   const alpha = PHYSICS.CURSOR_VELOCITY_SMOOTH;
   
   if (cursorControlsFirstShepherd) {
-    shepherds.members[0].x = mouseX;
-    shepherds.members[0].y = mouseY;
+    
+    //shepherds.members[0].x = mouseX;
+    //shepherds.members[0].y = mouseY;
+    // smooth position toward mouse target
+    const beta = PHYSICS.TARGET_POSITION_SMOOTH || 0.03;
+    shepherds.members[0].x = shepherds.members[0].x * (1 - beta) + mouseX * beta;
+    shepherds.members[0].y = shepherds.members[0].y * (1 - beta) + mouseY * beta;
+
     // smooth velocity to reduce jitter
     shepherds.members[0].vx = shepherds.members[0].vx * (1 - alpha) + rawVx * alpha;
     shepherds.members[0].vy = shepherds.members[0].vy * (1 - alpha) + rawVy * alpha;
     
     // also update cursor shepherd object for radius visualization
-    cursorShepherd.x = mouseX;
-    cursorShepherd.y = mouseY;
+    //cursorShepherd.x = mouseX;
+    //cursorShepherd.y = mouseY;
+    const betaCursor = PHYSICS.TARGET_POSITION_SMOOTH || 0.03;
+    cursorShepherd.x = cursorShepherd.x * (1 - betaCursor) + mouseX * betaCursor;
+    cursorShepherd.y = cursorShepherd.y * (1 - betaCursor) + mouseY * betaCursor;
+
+
     cursorShepherd.vx = shepherds.members[0].vx;
     cursorShepherd.vy = shepherds.members[0].vy;
   } else {
+
     // smooth velocity to reduce jitter
     cursorHerdMember.vx = cursorHerdMember.vx * (1 - alpha) + rawVx * alpha;
     cursorHerdMember.vy = cursorHerdMember.vy * (1 - alpha) + rawVy * alpha;
@@ -491,7 +503,12 @@ function animate() {
   const shepsTargetY = targetY;
 
   // Apply target smoothing (skip in slim mode to lock target at center)
-  if (typeof isSlim === 'undefined' || !isSlim) {
+  //if (typeof isSlim === 'undefined' || !isSlim) {
+
+  // Apply target smoothing only in slim mode 
+  //if (typeof isSlim !== 'undefined' && isSlim) {
+
+  if (false) {
     const beta = PHYSICS.TARGET_POSITION_SMOOTH || 0.03;
     targetX = targetX * (1 - beta) + mouseX * beta;
     targetY = targetY * (1 - beta) + mouseY * beta;
@@ -539,10 +556,22 @@ function animate() {
   }
 
   // update and draw shepherds (pass full list, each shepherd skips self)
+  //for (let s = 0; s < shepsObjects.length; s++) {
+  //  const shep = shepsObjects[s];
+  //  shep.update(allMembers, shepsObjects, shepsTargetX, shepsTargetY, canvas.width, canvas.height, spatialGrid);
+  //  shep.draw(ctx, shepherds.color);
+  //}
+
+  // update and draw shepherds (pass full list, each shepherd skips self)
   for (let s = 0; s < shepsObjects.length; s++) {
     const shep = shepsObjects[s];
-    shep.update(allMembers, shepsObjects, shepsTargetX, shepsTargetY, canvas.width, canvas.height, spatialGrid);
-    shep.draw(ctx, shepherds.color);
+    // skip drawing first shepherd if controlling it with cursor
+    if (cursorControlsFirstShepherd && s === 0) {
+      shep.update(allMembers, shepsObjects, shepsTargetX, shepsTargetY, canvas.width, canvas.height, spatialGrid);
+    } else {
+      shep.update(allMembers, shepsObjects, shepsTargetX, shepsTargetY, canvas.width, canvas.height, spatialGrid);
+      shep.draw(ctx, shepherds.color);
+    }
   }
 
   // draw cursor shepherd if in shepherd mode
