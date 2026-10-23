@@ -112,20 +112,20 @@ let shepParams = {
 
 // Slim mode: increase herd spacing radii and make shepherds more aggressive
 if (typeof APP_MODE !== 'undefined' && APP_MODE === 'slim') {
-  herdParams.r_R *= 3;
-  herdParams.r_O *= 3;
-  herdParams.r_A *= 3;
+  herdParams.r_R *= 1.0;
+  herdParams.r_O *= 1.0;
+  herdParams.r_A *= 1.0;
   herdParams.r_I = herdParams.r_A - 0.5;
   shepParams.r_S = (herdParams.r_A - 0.5) - 1;
   
   // increase shepherd aggression
   shepParams.a_N *= 1.0;     // navigation gain (was 0.9)
-  shepParams.a_R_s *= 3.0;   // repulsion gain (was 0.9)
+  shepParams.a_R_s *= 1.0;   // repulsion gain (was 0.9)
   shepParams.a_R_s_v = 1 * Math.sqrt(shepParams.a_R_s);
 
   // increase drag
-  herdParams.a_V *= 3;   // drag gain (was 1.0)
-  shepParams.a_V_s *= 2;   // drag gain 
+  herdParams.a_V *= 1.0;   // drag gain (was 1.0)
+  shepParams.a_V_s *= 1.0;   // drag gain 
 }
 
 // min/max values for UI sliders (fixed)
