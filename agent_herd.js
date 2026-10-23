@@ -1,5 +1,17 @@
+// Herd-member dynamics for WebShep.
+// Depends on the existing globals: Agent, VectorMath, PHYSICS, herdParams,
+// INIT, showRadii, and isSlim.
+//
+// Zone radii are ABSOLUTE distances:
+//   [0, r_R)       : repulsion
+//   [r_R, r_O)     : orientation
+//   [r_O, r_A)     : attraction
+// The radii should therefore satisfy 0 <= r_R <= r_O <= r_A.
+//
+// Assumed physics units:
+//   position: pixels; velocity / maxSpeed: pixels per second;
+//   HERD_MAX_FORCE: pixels per second squared; DT: seconds per update.
 
-// extend agent class for herd members 
 class HerdMember extends Agent {
   constructor(x, y, herdId) {
     super();
@@ -11,74 +23,100 @@ class HerdMember extends Agent {
     this.herdId = herdId;
   }
 
-  // update the herd dynamics 
-  // grid: optional SpatialGrid for O(1) neighbor lookup
+  // Update the herd dynamics.
+  // `grid` is an optional SpatialGrid used for faster neighbour searches.
   update(allMembers, shepherds, width, height, grid) {
-    
-    // compute r_I from r_A if not already set
-    if (herdParams.r_I === null) {
-      herdParams.r_I = herdParams.r_A - 0.5;
-    }
+    // This parameter is derived, so keep it synchronized with an r_A slider.
+    herdParams.r_I = Math.max(0, herdParams.r_A - 0.5);
 
-    // initialize repulsion, orientation, and attraction forces
+    const dt = PHYSICS.DT;
+    const maxForce = PHYSICS.HERD_MAX_FORCE;
+
+    const rR = herdParams.r_R;
+    const rO = herdParams.r_O;
+    const rA = herdParams.r_A;
+    const rI = herdParams.r_I;
+
+    const r_R_sq = rR * rR;
+    const r_O_sq = rO * rO;
+    const r_A_sq = rA * rA;
+    const r_I_sq = rI * rI;
+
     let repX = 0, repY = 0;
     let oriX = 0, oriY = 0;
     let attX = 0, attY = 0;
     let repCount = 0, oriCount = 0, attCount = 0;
 
-    // pre-compute squared radii to avoid sqrt in range comparisons
-    const r_R_sq = herdParams.r_R * herdParams.r_R;
-    const r_O_sq = herdParams.r_O * herdParams.r_O;
-    const r_A_sq = herdParams.r_A * herdParams.r_A;
+    // A normal spatial-grid query may not include neighbours on the opposite
+    // canvas edge. Use the full list near an edge to preserve wraparound.
+    // (If your SpatialGrid supports periodic queries, this fallback can go.)
+    const nearEdge = width > 0 && height > 0 && (
+      this.x < rA || this.x >= width - rA ||
+      this.y < rA || this.y >= height - rA
+    );
+    const nearby = grid && !nearEdge
+      ? grid.query(this.x, this.y, rA)
+      : allMembers;
 
-    // interact with nearby herd members (use spatial grid if available)
-    const nearby = grid ? grid.query(this.x, this.y, Math.max(herdParams.r_R, herdParams.r_O, herdParams.r_A)) : allMembers;
-    for (let other of nearby) {
+    for (const other of nearby) {
       if (other === this) continue;
 
-      const dx = this.x - other.x;
-      const dy = this.y - other.y;
-      const distSq = dx * dx + dy * dy;
+      // Minimum-image displacement, from other to this agent.
+      // Works with the periodic (wrapping) canvas boundaries below.
+      let dx = this.x - other.x;
+      let dy = this.y - other.y;
+      if (width > 0) {
+        if (dx > width / 2) dx -= width;
+        else if (dx < -width / 2) dx += width;
+      }
+      if (height > 0) {
+        if (dy > height / 2) dy -= height;
+        else if (dy < -height / 2) dy += height;
+      }
 
+      const distSq = dx * dx + dy * dy;
       if (distSq === 0) continue;
 
-      // repulsion (r_R) — inverse-square weighted
+      // Mutually exclusive zones: each neighbour contributes to ONE zone.
       if (distSq < r_R_sq) {
-        // w = 1/distSq, and (dx/dist)*w = dx/dist^3 = dx/(distSq * sqrt(distSq))
-        // but since we accumulate weighted, we can use: dx / (distSq) as the contribution
-        // which is (dx/dist) * (1/dist) = equivalent to original (dx/dist) * (1/distSq) * dist
-        // Actually: original is (dx/dist) * (1/distSq) = dx / (dist^3)
-        // = dx / (distSq * sqrt(distSq))
+        // Inverse-square-weighted average of outward unit vectors.
         const invDistSq = 1 / distSq;
-        const invDist = Math.sqrt(invDistSq); // = 1/dist, only sqrt when actually needed
+        const invDist = Math.sqrt(invDistSq);
         repX += dx * invDist * invDistSq;
         repY += dy * invDist * invDistSq;
         repCount += invDistSq;
-      }
 
-      // orientation (r_O) — no distance value needed, just range check
-      if (distSq < r_O_sq) {
+      } else if (distSq < r_O_sq) {
+        // Mean neighbour velocity for alignment.
         oriX += other.vx;
         oriY += other.vy;
         oriCount++;
-      }
 
-      // attraction (r_A) — no distance value needed, just range check
-      if (distSq < r_A_sq) {
-        attX += other.x;
-        attY += other.y;
+      } else if (distSq < r_A_sq) {
+        // Average direction toward attraction-zone neighbours.
+        // Accumulate RELATIVE offsets to handle wrapped boundaries correctly.
+        attX -= dx;
+        attY -= dy;
         attCount++;
       }
     }
 
-    // check shepherd interaction (highest priority — overrides herd mentality)
-    const r_I_sq = herdParams.r_I * herdParams.r_I;
+    // Shepherd repulsion has priority over all herd interactions.
     let shepRepX = 0, shepRepY = 0, shepCount = 0;
-    for (let shep of shepherds) {
-      const dx = this.x - shep.x;
-      const dy = this.y - shep.y;
+    for (const shep of shepherds) {
+      let dx = this.x - shep.x;
+      let dy = this.y - shep.y;
+      if (width > 0) {
+        if (dx > width / 2) dx -= width;
+        else if (dx < -width / 2) dx += width;
+      }
+      if (height > 0) {
+        if (dy > height / 2) dy -= height;
+        else if (dy < -height / 2) dy += height;
+      }
+
       const distSq = dx * dx + dy * dy;
-      if (distSq < r_I_sq && distSq > 0) {
+      if (distSq > 0 && distSq < r_I_sq) {
         const invDistSq = 1 / distSq;
         const invDist = Math.sqrt(invDistSq);
         shepRepX += dx * invDist * invDistSq;
@@ -87,69 +125,98 @@ class HerdMember extends Agent {
       }
     }
 
-    // apply aggregated forces 
-    // zoning: shepherd overrides all; herd repulsion overrides orientation and attraction
+    let ax = 0;
+    let ay = 0;
+
     if (shepCount > 0) {
-      this.vx += (shepRepX / shepCount) * PHYSICS.HERD_MAX_FORCE * herdParams.a_I;
-      this.vy += (shepRepY / shepCount) * PHYSICS.HERD_MAX_FORCE * herdParams.a_I;
-    } else if (repCount > 0) {
-      this.vx += (repX / repCount) * PHYSICS.HERD_MAX_FORCE * herdParams.a_R;
-      this.vy += (repY / repCount) * PHYSICS.HERD_MAX_FORCE * herdParams.a_R;
+      // Highest priority: move away from shepherds.
+      ax = (shepRepX / shepCount) * maxForce * herdParams.a_I;
+      ay = (shepRepY / shepCount) * maxForce * herdParams.a_I;
     } else {
-      if (oriCount > 0) {
-        oriX /= oriCount;
-        oriY /= oriCount;
-        VectorMath.limitMagnitudeInto(oriX - this.vx, oriY - this.vy, PHYSICS.HERD_MAX_FORCE * herdParams.a_O, VectorMath._limitOut);
-        this.vx += VectorMath._limitOut.vx;
-        this.vy += VectorMath._limitOut.vy;
+      // Repulsion and attraction can act together on DIFFERENT neighbours.
+      if (repCount > 0) {
+        ax += (repX / repCount) * maxForce * herdParams.a_R;
+        ay += (repY / repCount) * maxForce * herdParams.a_R;
+      }
+
+      // close-range repulsion suspends alignment.
+      if (repCount === 0 && oriCount > 0) {
+        const avgOriX = oriX / oriCount;
+        const avgOriY = oriY / oriCount;
+
+        VectorMath.limitMagnitudeInto(
+          avgOriX - this.vx,
+          avgOriY - this.vy,
+          maxForce * herdParams.a_O,
+          VectorMath._limitOut
+        );
+        ax += VectorMath._limitOut.vx;
+        ay += VectorMath._limitOut.vy;
       }
 
       if (attCount > 0) {
-        attX /= attCount;
-        attY /= attCount;
-        const dx = attX - this.x;
-        const dy = attY - this.y;
-        const distSqAtt = dx * dx + dy * dy;
-        if (distSqAtt > 0) {
-          const invDist = 1 / Math.sqrt(distSqAtt);
-          this.vx += dx * invDist * PHYSICS.HERD_MAX_FORCE * herdParams.a_A;
-          this.vy += dy * invDist * PHYSICS.HERD_MAX_FORCE * herdParams.a_A;
+        const dx = attX / attCount;
+        const dy = attY / attCount;
+        const distSq = dx * dx + dy * dy;
+        if (distSq > 0) {
+          const invDist = 1 / Math.sqrt(distSq);
+          ax += dx * invDist * maxForce * herdParams.a_A;
+          ay += dy * invDist * maxForce * herdParams.a_A;
         }
       }
     }
 
-    // laziness/friction
-    this.vx *= (1 - herdParams.a_V * PHYSICS.DT);
-    this.vy *= (1 - herdParams.a_V * PHYSICS.DT);
+    // Integrate acceleration into velocity (frame-based)
+    this.vx += ax;
+    this.vy += ay;
 
-    // limit speed (GC-free)
-    VectorMath.limitMagnitudeInto(this.vx, this.vy, this.maxSpeed, VectorMath._limitOut);
+    // Friction
+    const damping = Math.max(
+      0,
+      1 - herdParams.a_V * PHYSICS.DT
+    );
+
+    this.vx *= damping;
+    this.vy *= damping;
+
+    // Limit speed
+    VectorMath.limitMagnitudeInto(
+      this.vx,
+      this.vy,
+      this.maxSpeed,
+      VectorMath._limitOut
+    );
+
     this.vx = VectorMath._limitOut.vx;
     this.vy = VectorMath._limitOut.vy;
 
-    // update position (should have a time component, but scaling does this)
+    // Update position (frame-based)
     this.x += this.vx;
     this.y += this.vy;
 
-    // wrap around edges of canvas
-    if (this.x < 0) this.x = width;
-    if (this.x > width) this.x = 0;
-    if (this.y < 0) this.y = height;
-    if (this.y > height) this.y = 0;
+    // Periodic boundary conditions; modulo also handles large jumps.
+    if (width > 0 && (this.x < 0 || this.x >= width)) {
+      this.x = ((this.x % width) + width) % width;
+    }
+    if (height > 0 && (this.y < 0 || this.y >= height)) {
+      this.y = ((this.y % height) + height) % height;
+    }
   }
 
   draw(ctx, color) {
     if ((showRadii || this.isCursor) && !isSlim) {
-      const maxRadiusViz = Math.max(herdParams.r_R, herdParams.r_O, herdParams.r_A);
+      const maxRadiusViz = Math.max(
+        herdParams.r_R, herdParams.r_O, herdParams.r_A
+      );
       this.drawRadiusCircle(ctx, color, maxRadiusViz);
     }
-    
+
     const angle = Math.atan2(this.vy, this.vx);
     this.drawTriangle(ctx, color, angle);
   }
 }
 
-// functions to initial and dynamically modify the herd
+// Initialize a herd with random positions around a given centre.
 function initializeHerd(
   count = INIT.HERD_SIZE,
   centerX = window.innerWidth / 2,
