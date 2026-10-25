@@ -61,7 +61,20 @@ const modeConfig = MODE_CONFIG[typeof APP_MODE !== 'undefined' ? APP_MODE : 'ful
 
 // ====== STATIC ========
 
-// physics 
+// Simulation step rate and reference rate.
+//
+// The behavior constants (forces, speeds, smoothing gains) are expressed
+// per simulation step and were tuned at SIM_REFERENCE_HZ. The integrators
+// scale each step's contribution by STEP_TIME_SCALE, so changing
+// FIXED_TIMESTEP_MS changes integration granularity but NOT how fast the
+// simulation runs in wall-clock terms; wall-clock speed is pinned to the
+// reference rate. At 120Hz the scale is exactly 1 and behavior is
+// bit-identical to the tuned baseline.
+const SIM_REFERENCE_HZ = 120;
+const FIXED_TIMESTEP_MS = 1000 / 120;
+const STEP_TIME_SCALE = FIXED_TIMESTEP_MS / (1000 / SIM_REFERENCE_HZ);
+
+// physics
 const PHYSICS = {
   SHEPHERD_MAX_FORCE: modeConfig.SHEPHERD_MAX_FORCE,
   SHEPHERD_MAX_SPEED: modeConfig.SHEPHERD_MAX_SPEED,
@@ -70,9 +83,8 @@ const PHYSICS = {
   HERD_MAX_FORCE: modeConfig.HERD_MAX_FORCE,
   HERD_MAX_SPEED: modeConfig.HERD_MAX_SPEED,
   DT: modeConfig.DT,
-  // Run simulation at 120Hz to better match the pre-refactor traversal speed
-  // seen on high-refresh displays (previously tied to requestAnimationFrame).
-  FIXED_TIMESTEP_MS: 1000 / 120,
+  FIXED_TIMESTEP_MS: FIXED_TIMESTEP_MS,
+  STEP_TIME_SCALE: STEP_TIME_SCALE,
   // Keep catch-up horizon close to the prior ~83ms (5 steps @ 60Hz).
   MAX_CATCHUP_STEPS: 10,
   MAX_FRAME_DELTA_MS: 100,

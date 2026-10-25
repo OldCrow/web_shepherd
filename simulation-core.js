@@ -7,8 +7,10 @@ const simulationGrid = new SpatialGrid(Math.max(50, herdParams.r_A));
 function updateCursorState(simState) {
   const rawVx = simState.mouseX - simState.prevMouseX;
   const rawVy = simState.mouseY - simState.prevMouseY;
-  const alpha = PHYSICS.CURSOR_VELOCITY_SMOOTH;
-  const beta = PHYSICS.TARGET_POSITION_SMOOTH || 0.03;
+  // These filters run once per simulation step; scale their per-step gains
+  // to the reference rate (first-order) so cursor feel is step-rate-independent.
+  const alpha = Math.min(1, PHYSICS.CURSOR_VELOCITY_SMOOTH * PHYSICS.STEP_TIME_SCALE);
+  const beta = Math.min(1, (PHYSICS.TARGET_POSITION_SMOOTH || 0.03) * PHYSICS.STEP_TIME_SCALE);
 
   if (simState.cursorControlsFirstShepherd) {
     if (simState.shepherdMembers.length > 0) {

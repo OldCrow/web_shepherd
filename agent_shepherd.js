@@ -16,6 +16,9 @@ class Shepherd extends Agent {
   // update the shepherd dynamics
   // grid: optional SpatialGrid for O(1) neighbor lookup
   update(herdMembers, otherShepherds, targetX, targetY, width, height, grid) {
+    // Per-step contributions are tuned at SIM_REFERENCE_HZ; this scale keeps
+    // wall-clock behavior the same if the step rate ever changes.
+    const stepScale = PHYSICS.STEP_TIME_SCALE;
 
     // find closest herd member — must search ALL members (not grid)
     // because the shepherd navigates to wherever the closest herd member is,
@@ -54,8 +57,8 @@ class Shepherd extends Agent {
         const dist = VectorMath.distance(this.x, this.y, desiredX, desiredY);
 
         if (dist > PHYSICS.SHEPHERD_UPDATE_THRESHOLD) {
-          this.vx += (dx / dist) * PHYSICS.SHEPHERD_MAX_FORCE * shepParams.a_N;
-          this.vy += (dy / dist) * PHYSICS.SHEPHERD_MAX_FORCE * shepParams.a_N;
+          this.vx += (dx / dist) * PHYSICS.SHEPHERD_MAX_FORCE * shepParams.a_N * stepScale;
+          this.vy += (dy / dist) * PHYSICS.SHEPHERD_MAX_FORCE * shepParams.a_N * stepScale;
         }
       }
     }
@@ -71,23 +74,23 @@ class Shepherd extends Agent {
       const distSq = dx * dx + dy * dy;
       if (distSq < repelMaxDistSq && distSq > 0) {
         const invDist = 1 / Math.sqrt(distSq);
-        this.vx += dx * invDist * PHYSICS.SHEPHERD_MAX_FORCE * shepParams.a_R_s;
-        this.vy += dy * invDist * PHYSICS.SHEPHERD_MAX_FORCE * shepParams.a_R_s;
+        this.vx += dx * invDist * PHYSICS.SHEPHERD_MAX_FORCE * shepParams.a_R_s * stepScale;
+        this.vy += dy * invDist * PHYSICS.SHEPHERD_MAX_FORCE * shepParams.a_R_s * stepScale;
       }
     }
 
-    // laziness/friction: slow down 
-    this.vx += shepParams.a_V_s * (-this.vx) * PHYSICS.DT;
-    this.vy += shepParams.a_V_s * (-this.vy) * PHYSICS.DT;
+    // laziness/friction: slow down
+    this.vx += shepParams.a_V_s * (-this.vx) * PHYSICS.DT * stepScale;
+    this.vy += shepParams.a_V_s * (-this.vy) * PHYSICS.DT * stepScale;
 
     // limit speed (GC-free)
     VectorMath.limitMagnitudeInto(this.vx, this.vy, this.maxSpeed, VectorMath._limitOut);
     this.vx = VectorMath._limitOut.vx;
     this.vy = VectorMath._limitOut.vy;
 
-    // update position (should have a time component, but scaling does this)
-    this.x += this.vx;
-    this.y += this.vy;
+    // update position (per step, scaled to reference rate)
+    this.x += this.vx * stepScale;
+    this.y += this.vy * stepScale;
 
     // wrap around edges of canvas
     if (this.x < 0) this.x = width;

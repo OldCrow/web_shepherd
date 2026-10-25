@@ -31,6 +31,9 @@ class HerdMember extends Agent {
 
     const dt = PHYSICS.DT;
     const maxForce = PHYSICS.HERD_MAX_FORCE;
+    // Per-step contributions are tuned at SIM_REFERENCE_HZ; this scale keeps
+    // wall-clock behavior the same if the step rate ever changes.
+    const stepScale = PHYSICS.STEP_TIME_SCALE;
 
     const rR = herdParams.r_R;
     const rO = herdParams.r_O;
@@ -166,14 +169,14 @@ class HerdMember extends Agent {
       }
     }
 
-    // Integrate acceleration into velocity (frame-based)
-    this.vx += ax;
-    this.vy += ay;
+    // Integrate acceleration into velocity (per step, scaled to reference rate)
+    this.vx += ax * stepScale;
+    this.vy += ay * stepScale;
 
     // Friction
     const damping = Math.max(
       0,
-      1 - herdParams.a_V * PHYSICS.DT
+      1 - herdParams.a_V * PHYSICS.DT * stepScale
     );
 
     this.vx *= damping;
@@ -190,9 +193,9 @@ class HerdMember extends Agent {
     this.vx = VectorMath._limitOut.vx;
     this.vy = VectorMath._limitOut.vy;
 
-    // Update position (frame-based)
-    this.x += this.vx;
-    this.y += this.vy;
+    // Update position (per step, scaled to reference rate)
+    this.x += this.vx * stepScale;
+    this.y += this.vy * stepScale;
 
     // Periodic boundary conditions; modulo also handles large jumps.
     if (width > 0 && (this.x < 0 || this.x >= width)) {
