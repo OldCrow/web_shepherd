@@ -1,3 +1,9 @@
+// Mode detection must run before importScripts(config.js), which reads
+// APP_MODE to pick the active MODE_CONFIG. The main thread passes the mode
+// in this script's query string.
+const APP_MODE = new URLSearchParams(self.location.search).get('mode') === 'slim' ? 'slim' : 'full';
+const isSlim = APP_MODE === 'slim';
+
 importScripts(
   'config.js',
   'vector-math.js',

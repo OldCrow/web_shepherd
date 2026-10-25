@@ -678,7 +678,9 @@ function ensureSimulationWorker() {
   }
 
   try {
-    simulationWorker = new Worker('simulation-worker.js');
+    // Pass the app mode so the worker's config.js resolves the same
+    // MODE_CONFIG the main thread uses.
+    simulationWorker = new Worker('simulation-worker.js?mode=' + APP_MODE);
   } catch (error) {
     disableSimulationWorker(error);
     return;
