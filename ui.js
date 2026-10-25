@@ -468,9 +468,10 @@ function drawHerdConnections(ctx, members, maxDistance, color) {
   }
 }
 
-// animation 
+// animation
 let animationContext = null;
 let simulationWorker = null;
+let workerUnavailable = false;
 let workerStepInFlight = false;
 let pendingWorkerSteps = 0;
 
@@ -656,12 +657,38 @@ function dispatchWorkerSteps() {
   });
 }
 
-function ensureSimulationWorker() {
+// Fall back to running the simulation on the main thread when the worker
+// cannot start (e.g. file:// pages) or its script fails to load. All of
+// simulation-core.js is loaded on the main thread too, so stepSimulation()
+// works directly on worldState.
+function disableSimulationWorker(reason) {
   if (simulationWorker) {
+    simulationWorker.terminate();
+    simulationWorker = null;
+  }
+  workerUnavailable = true;
+  workerStepInFlight = false;
+  pendingWorkerSteps = 0;
+  console.warn('Simulation worker unavailable; falling back to main-thread simulation.', reason);
+}
+
+function ensureSimulationWorker() {
+  if (simulationWorker || workerUnavailable) {
     return;
   }
 
-  simulationWorker = new Worker('simulation-worker.js');
+  try {
+    simulationWorker = new Worker('simulation-worker.js');
+  } catch (error) {
+    disableSimulationWorker(error);
+    return;
+  }
+
+  // Fires when the worker script itself fails to load or parse.
+  simulationWorker.addEventListener('error', (event) => {
+    disableSimulationWorker(event.message || event);
+  });
+
   simulationWorker.addEventListener('message', (event) => {
     const message = event.data;
     if (message.type === 'frame') {
@@ -730,11 +757,17 @@ function animate(timestamp) {
   }
 
   if (stepsToRun > 0) {
-    pendingWorkerSteps = Math.min(
-      pendingWorkerSteps + stepsToRun,
-      fixedStepLoop.maxCatchupSteps * 2
-    );
-    dispatchWorkerSteps();
+    if (workerUnavailable) {
+      for (let i = 0; i < stepsToRun; i++) {
+        fixedStepLoop.lastSimulationFrame = stepSimulation(simState);
+      }
+    } else {
+      pendingWorkerSteps = Math.min(
+        pendingWorkerSteps + stepsToRun,
+        fixedStepLoop.maxCatchupSteps * 2
+      );
+      dispatchWorkerSteps();
+    }
   }
 
   const frameData = fixedStepLoop.lastSimulationFrame || computeFallbackFrame(simState);
